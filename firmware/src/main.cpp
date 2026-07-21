@@ -67,6 +67,8 @@ struct SpriteFrame {
 #define I2C_SDA 4
 #define I2C_SCL 7
 #define I2C_SLAVE_ADDRESS 0x42
+#define BOOT_BUTTON 0
+#define LED_PIN 15
 
 #define GC9A01_SWRESET 0x01
 #define GC9A01_SLPOUT 0x11
@@ -147,6 +149,9 @@ bool ota_display_active = false;
 int ota_fill_rows = 0;
 bool waiting_display_shown = false;
 
+bool last_boot_button_state = HIGH;
+unsigned long last_boot_button_change = 0;
+
 void select_display(uint8_t cs_pin);
 void deselect_all();
 void set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
@@ -214,15 +219,39 @@ uint16_t render_3d_iris(int16_t x, int16_t y, int16_t iris_x, int16_t iris_y,
 }
 
 bool init_i2c_safe() {
+  // Try 1: Slave init with explicit pins
   Wire.end();
   delay(50);
-  Wire.begin((uint8_t)I2C_SLAVE_ADDRESS, I2C_SDA, I2C_SCL, 100000);
-  return true;
+  bool ok = Wire.begin((uint8_t)I2C_SLAVE_ADDRESS, (int)I2C_SDA, (int)I2C_SCL, (uint32_t)100000);
+  if (ok) { Serial.println("I2C: slave init OK (direct)"); return true; }
+  Serial.println("I2C: direct slave init failed, trying master-first...");
+
+  // Try 2: Init peripheral as master first, then switch to slave
+  Wire.end();
+  delay(50);
+  Wire.begin((int)I2C_SDA, (int)I2C_SCL, (uint32_t)100000);
+  Wire.end();
+  delay(50);
+  ok = Wire.begin((uint8_t)I2C_SLAVE_ADDRESS, (int)I2C_SDA, (int)I2C_SCL, (uint32_t)100000);
+  if (ok) { Serial.println("I2C: slave init OK (master-first)"); return true; }
+  Serial.println("I2C: master-first failed, trying default pins...");
+
+  // Try 3: Slave init with default pins
+  Wire.end();
+  delay(50);
+  ok = Wire.begin((uint8_t)I2C_SLAVE_ADDRESS);
+  if (ok) { Serial.println("I2C: slave init OK (default pins)"); return true; }
+  Serial.println("I2C: all init attempts failed");
+
+  return false;
 }
 
 void onReceive(int num_bytes) {
   if (num_bytes == 0) return;
   
+  if (!i2c_master_detected) {
+    Serial.println("I2C: master detected for the first time");
+  }
   i2c_master_detected = true;
   uint8_t cmd = Wire.read();
   num_bytes--;
@@ -1205,6 +1234,14 @@ static const uint8_t font_pct[FONT_H] = {
   0b00000000, 0b01100010, 0b01100100, 0b00001000,
   0b00010000, 0b00100110, 0b01000110, 0b00000000,
 };
+static const uint8_t font_c[FONT_H] = {
+  0b00000000, 0b00111100, 0b01100000, 0b01100000,
+  0b01100000, 0b01100110, 0b00111100, 0b00000000,
+};
+static const uint8_t font_K[FONT_H] = {
+  0b00000000, 0b01100110, 0b01101100, 0b01111000,
+  0b01101100, 0b01100110, 0b01100110, 0b00000000,
+};
 static const uint8_t font_dot[FONT_H] = {
   0b00000000, 0b00000000, 0b00000000, 0b00000000,
   0b00000000, 0b00000000, 0b00011000, 0b00011000,
@@ -1227,8 +1264,11 @@ const uint8_t* get_font_bitmap(char c) {
     case 'u': return font_u;
     case 'w': return font_w;
     case 'A': return font_A;
+    case 'c': return font_c;
+    case 'C': return font_c;
     case 'G': return font_G;
     case 'I': return font_I;
+    case 'K': return font_K;
     case 'N': return font_N;
     case 'O': return font_O;
     case 'T': return font_T;
@@ -1507,14 +1547,50 @@ void show_waiting_display() {
   send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
 }
 
+bool i2c_just_ready = false;
+unsigned long i2c_ready_display_start = 0;
+#define I2C_READY_DISPLAY_MS 3000
+
+void show_i2c_ready_display() {
+  i2c_just_ready = true;
+  i2c_ready_display_start = millis();
+
+  clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
+  clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
+
+  int y = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
+  draw_text_vertical_ccw(left_eye_buffer, "I2C", 75, y, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "I2C", 75, y, 2);
+
+  int y2 = (DISPLAY_HEIGHT - 2 * FONT_H * 2) / 2;
+  draw_text_vertical_ccw(left_eye_buffer, "OK", 120, y2, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "OK", 120, y2, 2);
+
+  uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
+  for (uint32_t i = 0; i < npix / 2; i++) {
+    uint16_t t = left_eye_buffer[i];
+    left_eye_buffer[i] = left_eye_buffer[npix - 1 - i];
+    left_eye_buffer[npix - 1 - i] = t;
+    uint16_t r = right_eye_buffer[i];
+    right_eye_buffer[i] = right_eye_buffer[npix - 1 - i];
+    right_eye_buffer[npix - 1 - i] = r;
+  }
+
+  send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
+  send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
+}
+
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(5000);
 
   pinMode(LEFT_EYE_CS, OUTPUT);
   pinMode(RIGHT_EYE_CS, OUTPUT);
   pinMode(SHARED_RST, OUTPUT);
   pinMode(SHARED_DC, OUTPUT);
+  pinMode(BOOT_BUTTON, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   // MISO pin -1 to avoid default pin 13 conflict with LEFT_EYE_CS (IO13)
   hspi->begin(SHARED_SCL, 1, SHARED_SDA, -1);
@@ -1544,15 +1620,21 @@ void setup() {
   
   Serial.println("Eye display system ready!");
   
-  i2c_initialized = init_i2c_safe();
+  while (!i2c_initialized) {
+    i2c_initialized = init_i2c_safe();
+    if (!i2c_initialized) {
+      Serial.println("I2C init failed - retrying in 2s (waiting for bus clear)");
+      delay(2000);
+    }
+  }
   
   if (i2c_initialized) {
     Wire.onReceive(onReceive);
     Wire.onRequest(onRequest);
     Serial.printf("I2C slave ready on address 0x%02X (SDA=%d, SCL=%d)\n", 
                   I2C_SLAVE_ADDRESS, I2C_SDA, I2C_SCL);
-  } else {
-    Serial.println("I2C slave initialization failed - continuing in autonomous mode");
+    digitalWrite(LED_PIN, HIGH);
+    show_i2c_ready_display();
   }
   
   ArduinoOTA.onStart([]() {
@@ -1587,6 +1669,13 @@ void loop() {
 
   uint32_t now = millis();
   
+  static uint32_t last_heartbeat = 0;
+  if (now - last_heartbeat > 5000) {
+    last_heartbeat = now;
+    Serial.printf("heartbeat i2c_init=%d master_seen=%d cmd_pending=%d\n",
+                  i2c_initialized, i2c_master_detected, i2c_command_received);
+  }
+  
   if (wifi_connected) {
     ArduinoOTA.handle();
   }
@@ -1618,7 +1707,41 @@ void loop() {
 
   process_i2c_command();
 
-  if (ota_display_active || waiting_display_shown) {
+  bool boot_button_state = digitalRead(BOOT_BUTTON);
+  if (boot_button_state == LOW && last_boot_button_state == HIGH && now - last_boot_button_change > 200) {
+    last_boot_button_change = now;
+    if (wifi_connected || wifi_connecting) {
+      Serial.println("Boot button: disconnecting WiFi");
+      wifi_should_connect = false;
+      wifi_connecting = false;
+      wifi_connected = false;
+      waiting_display_shown = false;
+      if (WiFi.isConnected()) {
+        WiFi.disconnect(true, true);
+      }
+    } else {
+      Serial.println("Boot button: connecting WiFi");
+      if (wifi_ssid.length() == 0) {
+        Preferences prefs;
+        prefs.begin("eye", true);
+        wifi_ssid = prefs.getString("wifi_ssid", "");
+        wifi_pass = prefs.getString("wifi_pass", "");
+        prefs.end();
+      }
+      if (wifi_ssid.length() > 0) {
+        wifi_should_connect = true;
+      } else {
+        Serial.println("Boot button: no WiFi credentials stored");
+      }
+    }
+  }
+  last_boot_button_state = boot_button_state;
+
+  if (i2c_just_ready && now - i2c_ready_display_start > I2C_READY_DISPLAY_MS) {
+    i2c_just_ready = false;
+  }
+
+  if (ota_display_active || waiting_display_shown || i2c_just_ready) {
     last_frame = now;
     return;
   }
