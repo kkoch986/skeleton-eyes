@@ -177,83 +177,105 @@ static const uint8_t font_A[FONT_H] = {
   0b00111100, 0b01111110, 0b11000011, 0b11000011,
   0b11111111, 0b11000011, 0b11000011, 0b11000011,
 };
-static const uint8_t font_O[FONT_H] = {
-  0b00111100, 0b01111110, 0b11100111, 0b11000011,
-  0b11000011, 0b11100111, 0b01111110, 0b00111100,
+static const uint8_t font_B[FONT_H] = {
+  0b11111100, 0b11000110, 0b11000011, 0b11111110,
+  0b11000011, 0b11000011, 0b11000110, 0b11111100,
 };
-static const uint8_t font_T[FONT_H] = {
-  0b11111111, 0b11111111, 0b00011000, 0b00011000,
-  0b00011000, 0b00011000, 0b00011000, 0b00011000,
+static const uint8_t font_C[FONT_H] = {
+  0b00111100, 0b01111110, 0b11000011, 0b11000000,
+  0b11000000, 0b11000011, 0b01111110, 0b00111100,
 };
-
-static const uint8_t font_a[FONT_H] = {
-  0b00000000, 0b00111100, 0b01000010, 0b01111110,
-  0b01000010, 0b01000010, 0b00111100, 0b00000000,
+static const uint8_t font_D[FONT_H] = {
+  0b11111100, 0b11000110, 0b11000011, 0b11000011,
+  0b11000011, 0b11000011, 0b11000110, 0b11111100,
 };
-static const uint8_t font_d[FONT_H] = {
-  0b00000010, 0b00000010, 0b00111110, 0b01000010,
-  0b01000010, 0b01000010, 0b00111110, 0b00000000,
+static const uint8_t font_E[FONT_H] = {
+  0b11111111, 0b11000000, 0b11000000, 0b11111100,
+  0b11000000, 0b11000000, 0b11000000, 0b11111111,
 };
-static const uint8_t font_e[FONT_H] = {
-  0b00000000, 0b00111100, 0b01000010, 0b01111110,
-  0b01000000, 0b01000000, 0b00111100, 0b00000000,
+static const uint8_t font_F[FONT_H] = {
+  0b11111111, 0b11000000, 0b11000000, 0b11111100,
+  0b11000000, 0b11000000, 0b11000000, 0b11000000,
 };
-static const uint8_t font_f[FONT_H] = {
-  0b00001100, 0b00010010, 0b00011110, 0b00010000,
-  0b00010000, 0b00010000, 0b00010000, 0b00000000,
-};
-static const uint8_t font_g[FONT_H] = {
-  0b00000000, 0b00111100, 0b01000010, 0b01000010,
-  0b00111110, 0b00000010, 0b00111100, 0b00000000,
-};
-static const uint8_t font_i[FONT_H] = {
-  0b00010000, 0b00000000, 0b00010000, 0b00010000,
-  0b00010000, 0b00010000, 0b00010000, 0b00000000,
-};
-static const uint8_t font_n[FONT_H] = {
-  0b00000000, 0b01110010, 0b01001010, 0b01001010,
-  0b01000010, 0b01000010, 0b01000010, 0b00000000,
-};
-static const uint8_t font_o[FONT_H] = {
-  0b00000000, 0b00111100, 0b01000010, 0b01000010,
-  0b01000010, 0b01000010, 0b00111100, 0b00000000,
-};
-static const uint8_t font_p[FONT_H] = {
-  0b00000000, 0b00111100, 0b01000010, 0b01111100,
-  0b01000000, 0b01000000, 0b01000000, 0b00000000,
-};
-static const uint8_t font_r[FONT_H] = {
-  0b00000000, 0b01110100, 0b01001100, 0b01000000,
-  0b01000000, 0b01000000, 0b01000000, 0b00000000,
-};
-static const uint8_t font_t[FONT_H] = {
-  0b00010000, 0b00010000, 0b01111100, 0b00010000,
-  0b00010000, 0b00010000, 0b00001100, 0b00000000,
-};
-static const uint8_t font_u[FONT_H] = {
-  0b00000000, 0b01000010, 0b01000010, 0b01000010,
-  0b01000010, 0b01000010, 0b00111110, 0b00000000,
-};
-static const uint8_t font_w[FONT_H] = {
-  0b10000001, 0b11000011, 0b11000011, 0b10100101,
-  0b10011001, 0b10011001, 0b10000001, 0b00000000,
-};
-
 static const uint8_t font_G[FONT_H] = {
   0b00111100, 0b01111110, 0b11000011, 0b11000000,
   0b11001111, 0b11000011, 0b01111110, 0b00111100,
+};
+static const uint8_t font_H[FONT_H] = {
+  0b11000011, 0b11000011, 0b11000011, 0b11111111,
+  0b11000011, 0b11000011, 0b11000011, 0b11000011,
 };
 static const uint8_t font_I[FONT_H] = {
   0b01111110, 0b00011000, 0b00011000, 0b00011000,
   0b00011000, 0b00011000, 0b00011000, 0b01111110,
 };
+static const uint8_t font_J[FONT_H] = {
+  0b00011111, 0b00001100, 0b00001100, 0b00001100,
+  0b00001100, 0b11001100, 0b01111100, 0b00111000,
+};
+static const uint8_t font_K[FONT_H] = {
+  0b11000011, 0b11000110, 0b11001100, 0b11111000,
+  0b11001100, 0b11000110, 0b11000011, 0b11000011,
+};
+static const uint8_t font_L[FONT_H] = {
+  0b11000000, 0b11000000, 0b11000000, 0b11000000,
+  0b11000000, 0b11000000, 0b11000000, 0b11111111,
+};
+static const uint8_t font_M[FONT_H] = {
+  0b11000011, 0b11100111, 0b11010101, 0b11010101,
+  0b11001011, 0b11001011, 0b11000011, 0b11000011,
+};
 static const uint8_t font_N[FONT_H] = {
   0b10000001, 0b11000001, 0b10100001, 0b10010001,
   0b10001001, 0b10000101, 0b10000011, 0b10000001,
 };
+static const uint8_t font_O[FONT_H] = {
+  0b00111100, 0b01111110, 0b11000011, 0b11000011,
+  0b11000011, 0b11000011, 0b01111110, 0b00111100,
+};
+static const uint8_t font_P[FONT_H] = {
+  0b11111100, 0b11000110, 0b11000011, 0b11000110,
+  0b11111100, 0b11000000, 0b11000000, 0b11000000,
+};
+static const uint8_t font_Q[FONT_H] = {
+  0b00111100, 0b01111110, 0b11000011, 0b11000011,
+  0b11010011, 0b11001110, 0b01111100, 0b00111011,
+};
+static const uint8_t font_R[FONT_H] = {
+  0b11111100, 0b11000110, 0b11000011, 0b11000110,
+  0b11111100, 0b11001100, 0b11000110, 0b11000011,
+};
+static const uint8_t font_S[FONT_H] = {
+  0b00111110, 0b01100011, 0b11000000, 0b01111100,
+  0b00000110, 0b00000011, 0b11000110, 0b01111100,
+};
+static const uint8_t font_T[FONT_H] = {
+  0b11111111, 0b11111111, 0b00011000, 0b00011000,
+  0b00011000, 0b00011000, 0b00011000, 0b00011000,
+};
+static const uint8_t font_U[FONT_H] = {
+  0b11000011, 0b11000011, 0b11000011, 0b11000011,
+  0b11000011, 0b11000011, 0b01111110, 0b00111100,
+};
+static const uint8_t font_V[FONT_H] = {
+  0b11000011, 0b11000011, 0b11000011, 0b11000011,
+  0b01100110, 0b01100110, 0b00111100, 0b00011000,
+};
 static const uint8_t font_W[FONT_H] = {
-  0b11000011, 0b11000011, 0b11000011, 0b11011011,
-  0b11011011, 0b11100111, 0b11000011, 0b10000001,
+  0b11000011, 0b11000011, 0b11000011, 0b11010101,
+  0b11010101, 0b11100111, 0b11000011, 0b10000001,
+};
+static const uint8_t font_X[FONT_H] = {
+  0b11000011, 0b11000011, 0b01100110, 0b00111100,
+  0b00111100, 0b01100110, 0b11000011, 0b11000011,
+};
+static const uint8_t font_Y[FONT_H] = {
+  0b11000011, 0b11000011, 0b01100110, 0b00111100,
+  0b00011000, 0b00011000, 0b00011000, 0b00011000,
+};
+static const uint8_t font_Z[FONT_H] = {
+  0b11111111, 0b11111111, 0b00000110, 0b00001100,
+  0b00011000, 0b00110000, 0b01100000, 0b11111111,
 };
 
 static const uint8_t font_0[FONT_H] = {
@@ -296,51 +318,74 @@ static const uint8_t font_9[FONT_H] = {
   0b00111100, 0b01111110, 0b11000011, 0b11000011,
   0b01111110, 0b00000110, 0b00001100, 0b01111000,
 };
+
+static const uint8_t font_excl[FONT_H] = {
+  0b00011000, 0b00011000, 0b00011000, 0b00011000,
+  0b00011000, 0b00000000, 0b00011000, 0b00000000,
+};
 static const uint8_t font_pct[FONT_H] = {
   0b00000000, 0b01100010, 0b01100100, 0b00001000,
   0b00010000, 0b00100110, 0b01000110, 0b00000000,
-};
-static const uint8_t font_c[FONT_H] = {
-  0b00000000, 0b00111100, 0b01100000, 0b01100000,
-  0b01100000, 0b01100110, 0b00111100, 0b00000000,
-};
-static const uint8_t font_K[FONT_H] = {
-  0b00000000, 0b01100110, 0b01101100, 0b01111000,
-  0b01101100, 0b01100110, 0b01100110, 0b00000000,
 };
 static const uint8_t font_dot[FONT_H] = {
   0b00000000, 0b00000000, 0b00000000, 0b00000000,
   0b00000000, 0b00000000, 0b00011000, 0b00011000,
 };
+static const uint8_t font_colon[FONT_H] = {
+  0b00000000, 0b00011000, 0b00011000, 0b00000000,
+  0b00000000, 0b00011000, 0b00011000, 0b00000000,
+};
+static const uint8_t font_dash[FONT_H] = {
+  0b00000000, 0b00000000, 0b00000000, 0b11111111,
+  0b11111111, 0b00000000, 0b00000000, 0b00000000,
+};
+static const uint8_t font_plus[FONT_H] = {
+  0b00000000, 0b00011000, 0b00011000, 0b11111111,
+  0b11111111, 0b00011000, 0b00011000, 0b00000000,
+};
+static const uint8_t font_slash[FONT_H] = {
+  0b00000011, 0b00000110, 0b00001100, 0b00011000,
+  0b00110000, 0b01100000, 0b11000000, 0b10000000,
+};
+static const uint8_t font_at[FONT_H] = {
+  0b00111100, 0b01000010, 0b10100101, 0b10101011,
+  0b10111101, 0b10000001, 0b01111110, 0b00000000,
+};
+static const uint8_t font_ques[FONT_H] = {
+  0b00111100, 0b01111110, 0b11000011, 0b00000110,
+  0b00011000, 0b00011000, 0b00000000, 0b00011000,
+};
 
 const uint8_t* get_font_bitmap(char c) {
+  if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
   switch (c) {
     case ' ': return font_space;
-    case 'a': return font_a;
-    case 'c': return font_c;
-    case 'C': return font_c;
-    case 'd': return font_d;
-    case 'e': return font_e;
-    case 'f': return font_f;
-    case 'g': return font_g;
-    case 'i': return font_i;
-    case 'K': return font_K;
-    case 'n': return font_n;
-    case 'o': return font_o;
-    case 'p': return font_p;
-    case 'r': return font_r;
-    case 't': return font_t;
-    case 'u': return font_u;
-    case 'w': return font_w;
     case 'A': return font_A;
+    case 'B': return font_B;
+    case 'C': return font_C;
+    case 'D': return font_D;
+    case 'E': return font_E;
+    case 'F': return font_F;
     case 'G': return font_G;
+    case 'H': return font_H;
     case 'I': return font_I;
+    case 'J': return font_J;
+    case 'K': return font_K;
+    case 'L': return font_L;
+    case 'M': return font_M;
     case 'N': return font_N;
     case 'O': return font_O;
+    case 'P': return font_P;
+    case 'Q': return font_Q;
+    case 'R': return font_R;
+    case 'S': return font_S;
     case 'T': return font_T;
+    case 'U': return font_U;
+    case 'V': return font_V;
     case 'W': return font_W;
-    case '%': return font_pct;
-    case '.': return font_dot;
+    case 'X': return font_X;
+    case 'Y': return font_Y;
+    case 'Z': return font_Z;
     case '0': return font_0;
     case '1': return font_1;
     case '2': return font_2;
@@ -351,6 +396,15 @@ const uint8_t* get_font_bitmap(char c) {
     case '7': return font_7;
     case '8': return font_8;
     case '9': return font_9;
+    case '!': return font_excl;
+    case '%': return font_pct;
+    case '.': return font_dot;
+    case ':': return font_colon;
+    case '-': return font_dash;
+    case '+': return font_plus;
+    case '/': return font_slash;
+    case '@': return font_at;
+    case '?': return font_ques;
     default:  return font_space;
   }
 }
@@ -374,7 +428,7 @@ void draw_char_scaled_rotated(uint16_t *buffer, int x, int y,
           int px = x + bx * scale + sx;
           int py = y + by * scale + sy;
           if (px >= 0 && px < DISPLAY_WIDTH && py >= 0 && py < DISPLAY_HEIGHT) {
-            buffer[py * DISPLAY_WIDTH + px] = OTA_COLOR_TEXT;
+            buffer[py * DISPLAY_WIDTH + px] = display_text_color;
           }
         }
       }
@@ -389,4 +443,44 @@ void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int x, int y_top
     int y = y_top + (len - 1 - i) * char_h;
     draw_char_scaled_rotated(buffer, x, y, get_font_bitmap(text[i]), scale, true);
   }
+}
+
+void draw_text_display(const char *text) {
+  display_bus_lock();
+
+  clear_frame_buffer(left_eye_buffer, display_text_bg);
+  clear_frame_buffer(right_eye_buffer, display_text_bg);
+
+  int char_h = FONT_H * 2;
+  int chars_per_col = DISPLAY_HEIGHT / char_h;
+  int len = strlen(text);
+  int num_cols = (len + chars_per_col - 1) / chars_per_col;
+  if (num_cols < 1) num_cols = 1;
+
+  int spacing = (num_cols > 1) ? (DISPLAY_WIDTH / num_cols) : 0;
+  int x_start = (DISPLAY_WIDTH - spacing * num_cols + spacing) / 2;
+
+  for (int col = 0; col < num_cols; col++) {
+    int start = col * chars_per_col;
+    int col_len = len - start;
+    if (col_len > chars_per_col) col_len = chars_per_col;
+
+    int x = x_start + col * spacing;
+    int y_total = col_len * char_h;
+    int y_top = (DISPLAY_HEIGHT - y_total) / 2;
+
+    draw_text_vertical_ccw(left_eye_buffer, text + start, x, y_top, 2);
+  }
+
+  uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
+  for (uint32_t i = 0; i < npix / 2; i++) {
+    uint16_t t = left_eye_buffer[i];
+    left_eye_buffer[i] = left_eye_buffer[npix - 1 - i];
+    left_eye_buffer[npix - 1 - i] = t;
+  }
+
+  send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
+  send_frame_buffer(RIGHT_EYE_CS, left_eye_buffer);
+
+  display_bus_unlock();
 }

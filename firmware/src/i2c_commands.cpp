@@ -1,8 +1,29 @@
 #include "i2c_commands.h"
 #include "ota_display.h"
+#include "sprites.h"
 #include <Wire.h>
 #include <WiFi.h>
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <string.h>
+
+/* Ring buffer of incoming I2C commands. onReceive (ISR) enqueues every
+ * command, process_i2c_command (loop) dequeues them one at a time, so no
+ * command is lost while a render is in progress and multi-byte payloads
+ * can't be torn by the ISR. */
+#define I2C_CMD_QUEUE_SIZE 16
+#define I2C_CMD_MAX_LEN    68
+
+typedef struct {
+  uint8_t data[I2C_CMD_MAX_LEN];
+  uint8_t len;
+} i2c_cmd_t;
+
+static i2c_cmd_t i2c_cmd_queue[I2C_CMD_QUEUE_SIZE];
+static volatile uint8_t i2c_cmd_head = 0;
+static volatile uint8_t i2c_cmd_tail = 0;
+static volatile uint8_t i2c_cmd_count = 0;
+static portMUX_TYPE i2c_mux = portMUX_INITIALIZER_UNLOCKED;
 
 void init_i2c_system() {
   while (!i2c_initialized) {
@@ -50,24 +71,39 @@ bool init_i2c_safe() {
 
 void onReceive(int num_bytes) {
   if (num_bytes == 0) return;
-  
+
   if (!i2c_master_detected) {
     Serial.println("I2C: master detected for the first time");
   }
   i2c_master_detected = true;
+
   uint8_t cmd = Wire.read();
   num_bytes--;
-  
-  i2c_buffer_index = 0;
-  i2c_buffer[i2c_buffer_index++] = cmd;
-  
-  while (Wire.available() && i2c_buffer_index < sizeof(i2c_buffer) && num_bytes > 0) {
-    i2c_buffer[i2c_buffer_index++] = Wire.read();
+
+  uint8_t tail = i2c_cmd_tail;
+  if (i2c_cmd_count >= I2C_CMD_QUEUE_SIZE) {
+    /* queue full: drop the oldest command to keep the newest */
+    i2c_cmd_head = (i2c_cmd_head + 1) % I2C_CMD_QUEUE_SIZE;
+    i2c_cmd_count--;
+  }
+
+  i2c_cmd_t *e = &i2c_cmd_queue[tail];
+  e->len = 0;
+  e->data[e->len++] = cmd;
+  while (Wire.available() && e->len < I2C_CMD_MAX_LEN && num_bytes > 0) {
+    e->data[e->len++] = Wire.read();
     num_bytes--;
   }
-  
+  /* drain any leftovers so the master isn't NAKed mid-transaction */
+  while (Wire.available()) Wire.read();
+
+  i2c_cmd_tail = (tail + 1) % I2C_CMD_QUEUE_SIZE;
+  i2c_cmd_count++;
+
+  /* keep the last command visible for onRequest */
+  i2c_buffer[0] = cmd;
   i2c_command_received = true;
-  
+
   if (cmd != I2C_CMD_STATUS && cmd != I2C_CMD_WIFI_STATUS &&
       cmd != I2C_CMD_GET_MODE && cmd != I2C_CMD_WIFI_SSID &&
       cmd != I2C_CMD_WIFI_PASS && cmd != I2C_CMD_WIFI_FORGET &&
@@ -113,41 +149,84 @@ void onRequest() {
   Wire.write(sprite_mode ? 1 : 0);
   bool autonomous = sprite_mode ? false : !i2c_external_control;
   Wire.write(autonomous ? 1 : 0);
-  uint8_t ota_flags = (ota_display_active ? 1 : 0) | (waiting_display_shown ? 2 : 0);
+  uint8_t ota_flags = (ota_display_active ? 1 : 0) | (waiting_display_shown ? 2 : 0) | (display_text_active ? 4 : 0);
   Wire.write(ota_flags);
+
+  Wire.write((uint8_t)(i2c_smoothing * 255));
+  Wire.write(auto_blink_enabled ? 1 : 0);
+  Wire.write((uint8_t)(auto_blink_interval & 0xFF));
+  Wire.write((uint8_t)((auto_blink_interval >> 8) & 0xFF));
+  Wire.write(current_sprite < 0 ? 255 : (uint8_t)current_sprite);
+  Wire.write((uint8_t)(current_sclera_color & 0xFF));
+  Wire.write((uint8_t)((current_sclera_color >> 8) & 0xFF));
+  Wire.write((uint8_t)(current_iris_med_color & 0xFF));
+  Wire.write((uint8_t)((current_iris_med_color >> 8) & 0xFF));
+  Wire.write((uint8_t)(current_iris_dark_color & 0xFF));
+  Wire.write((uint8_t)((current_iris_dark_color >> 8) & 0xFF));
+  Wire.write((uint8_t)(curve_falloff * 255));
+  Wire.write((uint8_t)(curve_minimum * 255));
+  Wire.write((uint8_t)(closure_strength * 255));
+  Wire.write(i2c_initialized ? 1 : 0);
+  Wire.write(i2c_master_detected ? 1 : 0);
+  Wire.write((uint8_t)(i2c_blink_duration & 0xFF));
+  Wire.write((uint8_t)((i2c_blink_duration >> 8) & 0xFF));
+  Wire.write((uint8_t)(current_look_x & 0xFF));
+  Wire.write((uint8_t)((current_look_x >> 8) & 0xFF));
+  Wire.write((uint8_t)(current_look_y & 0xFF));
+  Wire.write((uint8_t)((current_look_y >> 8) & 0xFF));
 }
 
 void process_i2c_command() {
-  if (!i2c_initialized || !i2c_command_received) return;
-  
-  uint8_t cmd = i2c_buffer[0];
-  
+  if (!i2c_initialized) return;
+
+  /* pop one command atomically into a local buffer */
+  uint8_t local[I2C_CMD_MAX_LEN];
+  uint8_t len;
+
+  portENTER_CRITICAL(&i2c_mux);
+  if (i2c_cmd_count == 0) {
+    portEXIT_CRITICAL(&i2c_mux);
+    i2c_command_received = false;
+    return;
+  }
+  uint8_t head = i2c_cmd_head;
+  i2c_cmd_head = (head + 1) % I2C_CMD_QUEUE_SIZE;
+  i2c_cmd_count--;
+  len = i2c_cmd_queue[head].len;
+  if (len > I2C_CMD_MAX_LEN) len = I2C_CMD_MAX_LEN;
+  memcpy(local, i2c_cmd_queue[head].data, len);
+  portEXIT_CRITICAL(&i2c_mux);
+
+  if (len == 0) return;
+
+  uint8_t cmd = local[0];
+
   switch (cmd) {
     case I2C_CMD_LOOK:
-      if (i2c_buffer_index >= 5) {
-        i2c_look_x = (int16_t)((i2c_buffer[2] << 8) | i2c_buffer[1]);
-        i2c_look_y = (int16_t)((i2c_buffer[4] << 8) | i2c_buffer[3]);
+      if (len >= 5) {
+        i2c_look_x = (int16_t)((local[2] << 8) | local[1]);
+        i2c_look_y = (int16_t)((local[4] << 8) | local[3]);
       }
       break;
       
     case I2C_CMD_BLINK:
-      if (i2c_buffer_index >= 3) {
-        i2c_blink_duration = (uint16_t)((i2c_buffer[2] << 8) | i2c_buffer[1]);
+      if (len >= 3) {
+        i2c_blink_duration = (uint16_t)((local[2] << 8) | local[1]);
         i2c_blink_trigger = true;
       }
       break;
       
     case I2C_CMD_SQUINT:
-      if (i2c_buffer_index >= 2) {
-        i2c_squint_level = i2c_buffer[1] / 255.0f;
+      if (len >= 2) {
+        i2c_squint_level = local[1] / 255.0f;
       }
       break;
       
     case I2C_CMD_CURVE_PARAMS:
-      if (i2c_buffer_index >= 4) {
-        curve_falloff = i2c_buffer[1] / 255.0f;
-        curve_minimum = i2c_buffer[2] / 255.0f;
-        closure_strength = i2c_buffer[3] / 255.0f;
+      if (len >= 4) {
+        curve_falloff = local[1] / 255.0f;
+        curve_minimum = local[2] / 255.0f;
+        closure_strength = local[3] / 255.0f;
       }
       break;
       
@@ -173,14 +252,14 @@ void process_i2c_command() {
       break;
       
     case I2C_CMD_SCLERA_RGB:
-      if (i2c_buffer_index >= 3) {
-        current_sclera_color = (uint16_t)(i2c_buffer[1] | (i2c_buffer[2] << 8));
+      if (len >= 3) {
+        current_sclera_color = (uint16_t)(local[1] | (local[2] << 8));
       }
       break;
       
     case I2C_CMD_IRIS_RGB:
-      if (i2c_buffer_index >= 3) {
-        uint16_t rgb = (uint16_t)(i2c_buffer[1] | (i2c_buffer[2] << 8));
+      if (len >= 3) {
+        uint16_t rgb = (uint16_t)(local[1] | (local[2] << 8));
         current_iris_med_color = rgb;
         uint8_t r = ((rgb >> 11) & 0x1F) * 0.6f;
         uint8_t g = ((rgb >> 5) & 0x3F) * 0.6f;
@@ -190,20 +269,22 @@ void process_i2c_command() {
       break;
       
     case I2C_CMD_AUTO_BLINK:
-      if (i2c_buffer_index >= 2) {
-        auto_blink_enabled = i2c_buffer[1] != 0;
+      if (len >= 2) {
+        auto_blink_enabled = local[1] != 0;
       }
       break;
 
     case I2C_CMD_AUTO_BLINK_SPEED:
-      if (i2c_buffer_index >= 3) {
-        auto_blink_interval = (uint16_t)(i2c_buffer[1] | (i2c_buffer[2] << 8));
+      if (len >= 3) {
+        auto_blink_interval = (uint16_t)(local[1] | (local[2] << 8));
       }
       break;
 
     case I2C_CMD_SPRITE_MODE:
-      if (i2c_buffer_index >= 2) {
-        sprite_mode = i2c_buffer[1] != 0;
+      if (len >= 2) {
+        bool prev = sprite_mode;
+        sprite_mode = local[1] != 0;
+        if (prev && !sprite_mode) force_eye_repaint = true;
       }
       break;
 
@@ -211,11 +292,11 @@ void process_i2c_command() {
       break;
 
     case I2C_CMD_SET_SPRITE:
-      if (i2c_buffer_index >= 2) {
-        if (i2c_buffer[1] == 255) {
+      if (len >= 2) {
+        if (local[1] == 255) {
           current_sprite = -1;
-        } else if (i2c_buffer[1] < sprite_count) {
-          current_sprite = i2c_buffer[1];
+        } else if (local[1] < sprite_count) {
+          current_sprite = local[1];
         }
       }
       break;
@@ -225,23 +306,25 @@ void process_i2c_command() {
       break;
       
     case I2C_CMD_JUMP:
-      if (i2c_buffer_index >= 5) {
-        i2c_look_x = (int16_t)((i2c_buffer[2] << 8) | i2c_buffer[1]);
-        i2c_look_y = (int16_t)((i2c_buffer[4] << 8) | i2c_buffer[3]);
+      if (len >= 5) {
+        i2c_look_x = (int16_t)((local[2] << 8) | local[1]);
+        i2c_look_y = (int16_t)((local[4] << 8) | local[3]);
         current_look_x = i2c_look_x;
         current_look_y = i2c_look_y;
       }
       break;
       
     case I2C_CMD_SMOOTHING:
-      if (i2c_buffer_index >= 2) {
-        i2c_smoothing = i2c_buffer[1] / 255.0f;
+      if (len >= 2) {
+        float level = local[1] / 255.0f;
+        i2c_smoothing = 1.0f - level;
+        if (i2c_smoothing < 0.02f) i2c_smoothing = 0.02f;
       }
       break;
       
     case I2C_CMD_WIFI_SSID: {
-      if (i2c_buffer_index > 1) {
-        wifi_ssid = String((const char*)(i2c_buffer + 1));
+      if (len > 1) {
+        wifi_ssid = String((const char*)(local + 1));
         Preferences prefs;
         prefs.begin("eye", false);
         prefs.putString("wifi_ssid", wifi_ssid);
@@ -251,8 +334,8 @@ void process_i2c_command() {
     }
     
     case I2C_CMD_WIFI_PASS: {
-      if (i2c_buffer_index > 1) {
-        wifi_pass = String((const char*)(i2c_buffer + 1));
+      if (len > 1) {
+        wifi_pass = String((const char*)(local + 1));
         Preferences prefs;
         prefs.begin("eye", false);
         prefs.putString("wifi_pass", wifi_pass);
@@ -293,7 +376,34 @@ void process_i2c_command() {
       
     case I2C_CMD_WIFI_STATUS:
       break;
+
+    case I2C_CMD_DISPLAY_TEXT: {
+      if (len > 1) {
+        char text[63];
+        uint8_t tlen = len - 1;
+        if (tlen > 62) tlen = 62;
+        memcpy(text, (const void*)(local + 1), tlen);
+        text[tlen] = '\0';
+        display_text_active = true;
+        draw_text_display(text);
+      }
+      break;
+    }
+
+    case I2C_CMD_CLEAR_TEXT:
+      display_text_active = false;
+      break;
+
+    case I2C_CMD_TEXT_COLOR:
+      if (len >= 3) {
+        display_text_color = (uint16_t)(local[1] | (local[2] << 8));
+      }
+      break;
+
+    case I2C_CMD_TEXT_BG:
+      if (len >= 3) {
+        display_text_bg = (uint16_t)(local[1] | (local[2] << 8));
+      }
+      break;
   }
-  
-  i2c_command_received = false;
 }

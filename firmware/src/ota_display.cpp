@@ -10,7 +10,9 @@ void ota_display_init() {
   ota_display_active = true;
   ota_fill_rows = 0;
   waiting_display_shown = false;
-  
+
+  display_bus_lock();
+
   clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
   clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
   
@@ -27,6 +29,8 @@ void ota_display_init() {
   
   send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
   send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
+
+  display_bus_unlock();
 }
 
 void ota_draw_percentage(int percent) {
@@ -159,7 +163,9 @@ void ota_display_update(unsigned int progress, unsigned int total) {
   if (!ota_display_active) return;
   int target_rows = (int)(((float)progress / total) * DISPLAY_HEIGHT);
   if (target_rows <= ota_fill_rows) return;
-  
+
+  display_bus_lock();
+
   int fill_top = DISPLAY_HEIGHT - target_rows;
   int fill_bot = DISPLAY_HEIGHT - ota_fill_rows - 1;
   if (fill_top > fill_bot) return;
@@ -180,12 +186,16 @@ void ota_display_update(unsigned int progress, unsigned int total) {
 
   ota_draw_percentage((progress * 100) / total);
   ota_redraw_label();
+
+  display_bus_unlock();
 }
 
 void show_waiting_display() {
   if (ota_display_active) return;
   waiting_display_shown = true;
-  
+
+  display_bus_lock();
+
   clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
   clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
   
@@ -212,11 +222,15 @@ void show_waiting_display() {
   
   send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
   send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
+
+  display_bus_unlock();
 }
 
 void show_i2c_ready_display() {
   i2c_just_ready = true;
   i2c_ready_display_start = millis();
+
+  display_bus_lock();
 
   clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
   clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
@@ -241,4 +255,6 @@ void show_i2c_ready_display() {
 
   send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
   send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
+
+  display_bus_unlock();
 }

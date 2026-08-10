@@ -31,6 +31,10 @@
 #define I2C_CMD_SPRITE_MODE 0x16
 #define I2C_CMD_GET_MODE 0x17
 #define I2C_CMD_SET_SPRITE 0x18
+#define I2C_CMD_DISPLAY_TEXT 0x19
+#define I2C_CMD_CLEAR_TEXT 0x1A
+#define I2C_CMD_TEXT_COLOR 0x1B
+#define I2C_CMD_TEXT_BG 0x1C
 
 #define MAX_SPRITE_FRAMES 64
 
@@ -150,3 +154,9 @@ extern int ota_fill_rows;
 extern bool waiting_display_shown;
 extern bool i2c_just_ready;
 extern unsigned long i2c_ready_display_start;
+
+extern bool display_text_active;
+extern uint16_t display_text_color;
+extern uint16_t display_text_bg;
+
+extern bool force_eye_repaint;

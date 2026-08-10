@@ -67,6 +67,12 @@ bool ota_display_active = false;
 int ota_fill_rows = 0;
 bool waiting_display_shown = false;
 
+bool display_text_active = false;
+uint16_t display_text_color = OTA_COLOR_TEXT;
+uint16_t display_text_bg = OTA_COLOR_BLACK;
+
+bool force_eye_repaint = false;
+
 void setup() {
   Serial.begin(115200);
   delay(5000);
@@ -78,6 +84,8 @@ void setup() {
   pinMode(BOOT_BUTTON, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
+
+  display_bus_init();
 
   hspi->begin(SHARED_SCL, 1, SHARED_SDA, -1);
 
@@ -104,6 +112,7 @@ void setup() {
   randomSeed(analogRead(0));
   Serial.println("Eye display system ready!");
 
+  renderer_init();
   init_i2c_system();
   wifi_init();
 }
@@ -127,4 +136,6 @@ void loop() {
   }
 
   update_eyes();
+
+  delay(1);
 }

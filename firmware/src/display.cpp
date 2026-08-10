@@ -1,5 +1,30 @@
 #include "display.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+/*
+ * Serialises access to the display buffers and the SPI bus between the
+ * async renderer task (core 0) and the loop task (core 1, OTA / text /
+ * I2C-triggered draws). Every top-level SPI operation must hold this lock.
+ */
+static SemaphoreHandle_t display_mutex = NULL;
+
+void display_bus_init() {
+  if (!display_mutex) {
+    display_mutex = xSemaphoreCreateMutex();
+  }
+}
+
+void display_bus_lock() {
+  if (!display_mutex) display_mutex = xSemaphoreCreateMutex();
+  xSemaphoreTake(display_mutex, portMAX_DELAY);
+}
+
+void display_bus_unlock() {
+  if (display_mutex) xSemaphoreGive(display_mutex);
+}
+
 void send_command(uint8_t cmd) {
   digitalWrite(SHARED_DC, LOW);
   hspi->beginTransaction(spi_settings);
@@ -223,7 +248,7 @@ void init_gc9a01() {
   send_command(0x35);
   send_command(0x21);
   send_command(GC9A01_MADCTL);
-  send_data(0x08);
+  send_data(0xC8);
   send_command(GC9A01_SLPOUT);
   delay(120);
   send_command(GC9A01_DISPON);
