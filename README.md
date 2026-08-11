@@ -10,11 +10,11 @@ skeleton-eye2/
 │   └── src/                # Procedural + sprite rendering, I2C slave, WiFi/OTA
 ├── lib/eye_control/        # C client library for controlling the eyes over I2C
 ├── management-board/       # ESP32-C3 I2C master controller
-│   └── src/eye_controller.ino  # Serial → I2C bridge
+│   ├── src/eye_controller.ino  # Serial → I2C bridge
+│   └── eye.sh                  # Send commands via USB serial
 ├── pcb/                    # Gerber files + drill files for the custom PCB
 ├── cad/                    # Frame/cover CAD files (DXF + STEP)
-├── wiring.svg              # Wiring diagram
-└── eye.sh                  # Send commands via USB serial
+└── wiring.svg              # Wiring diagram
 ```
 
 ## Hardware
