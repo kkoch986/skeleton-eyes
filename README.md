@@ -22,7 +22,7 @@ skeleton-eye2/
 | Component | Board | Role |
 |-----------|-------|------|
 | Eye display controller | ESP32-S3 (LOLIN S3 Mini) | Drives 2× GC9A01 displays, I2C slave at `0x42` |
-| Management board | ESP32-C3 (LOLIN C3 Mini) | I2C master, serial command interface |
+| Management board *(optional)* | ESP32-C3 (LOLIN C3 Mini) | I2C master, serial command interface — mainly for testing |
 
 **Note:** The left eye display is physically mounted upside down. The firmware handles the 180-degree rotation automatically.
 
@@ -60,7 +60,7 @@ See [`firmware/README.md`](firmware/README.md) for display pin connections and [
 # Build and upload firmware
 cd firmware && make upload
 
-# Build and upload management board (if used)
+# Optional: build and upload management board (for testing)
 cd management-board && make upload
 ```
 

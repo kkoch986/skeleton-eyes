@@ -1,5 +1,7 @@
 # I2C Controller for Skeleton Eye
 
+*Optional* — this board is mainly for testing and manual control. The eyes run standalone; the management board is only needed when you want to drive them interactively.
+
 Controls the skeleton-eye animatronic eye displays via I2C from an ESP32-C3 (or any Arduino-compatible I2C master).
 
 ## I2C Protocol
