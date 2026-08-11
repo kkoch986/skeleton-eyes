@@ -51,7 +51,7 @@ The eye board acts as an I2C slave. Commands override autonomous mode until a re
 | 0x02 | `BLINK` | duration (u16) | Trigger blink (ms) |
 | 0x03 | `SQUINT` | level (u8) | 0 (open) — 255 (closed) |
 | 0x06 | `CURVE_PARAMS` | falloff (u8), min (u8), strength (u8) | Eyelid curve (0-255 each → 0.0-1.0) |
-| 0x07 | `STATUS` | (read 6 bytes) | Returns x(i16), y(i16), squint(u8), external(u8) |
+| 0x07 | `STATUS` | (read 31 bytes) | Full status block — gaze, squint, mode, colors, curve, blink, current position |
 | 0x08 | `RESET` | — | Return to autonomous mode |
 | 0x09 | `SCLERA_RGB` | color (u16 le) | Sclera color as RGB565 |
 | 0x0A | `IRIS_RGB` | color (u16 le) | Iris color as RGB565 (dark variant derived) |
@@ -69,6 +69,10 @@ The eye board acts as an I2C slave. Commands override autonomous mode until a re
 | 0x16 | `SPRITE_MODE` | enable (u8) | 1=sprite, 0=procedural |
 | 0x17 | `GET_MODE` | (read) | Returns 1 byte: current render mode |
 | 0x18 | `SET_SPRITE` | index (u8) | 0-63, 255 = none |
+| 0x19 | `DISPLAY_TEXT` | string (max 62) | Display text wrapped on the eye screen |
+| 0x1A | `CLEAR_TEXT` | — | Hide text overlay |
+| 0x1B | `TEXT_COLOR` | color (u16 le) | Text color as RGB565 |
+| 0x1C | `TEXT_BG` | color (u16 le) | Text background color as RGB565 |
 
 ## Sprite Development
 

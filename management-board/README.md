@@ -42,7 +42,13 @@ make run        # build + upload + monitor
 | `idle` | Release I2C control |
 | `emotion <name>` | angry, sleepy, surprised, neutral |
 | `sprite on\|off` | Toggle render mode |
-| `status` | Read eye status |
+| `sprite <n>` | Display sprite by index (0-8, 255=blank) |
+| `spritestatus` | Query current render mode |
+| `animate <ms> <i>...` / `stop` | Loop sprite frames / stop animation |
+| `text <string>` / `text off` | Display / clear text on the eye screen |
+| `textcolor <r g b\|hex>` | Text color (3×0-255 or 4-digit hex) |
+| `textbg <r g b\|hex>` | Text background color |
+| `status` | Read full eye status (31-byte status block) |
 | `probe` | Check I2C connection |
 | `i2cscan` | Scan I2C bus |
 | `demo` | Run demo sequence |
