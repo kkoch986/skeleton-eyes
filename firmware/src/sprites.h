@@ -14,5 +14,5 @@ void load_sprite_data();
 const uint8_t* get_font_bitmap(char c);
 void draw_char_scaled_rotated(uint16_t *buffer, int x, int y,
                               const uint8_t *bitmap, int scale, bool rotate_ccw);
-void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int x, int y_top, int scale);
+void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int len, int x, int y_top, int scale);
 void draw_text_display(const char *text);

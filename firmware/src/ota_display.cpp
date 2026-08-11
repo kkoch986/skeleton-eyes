@@ -17,8 +17,8 @@ void ota_display_init() {
   clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
   
   int y_ota = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "OTA", 25, y_ota, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "OTA", 25, y_ota, 2);
+  draw_text_vertical_ccw(left_eye_buffer, "OTA", 3, 25, y_ota, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "OTA", 3, 25, y_ota, 2);
   
   uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
   for (uint32_t i = 0; i < npix / 2; i++) {
@@ -202,16 +202,16 @@ void show_waiting_display() {
   String ip = WiFi.localIP().toString();
   
   int y_ota = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "OTA", 25, y_ota, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "OTA", 25, y_ota, 2);
+  draw_text_vertical_ccw(left_eye_buffer, "OTA", 3, 25, y_ota, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "OTA", 3, 25, y_ota, 2);
   
   int y_wait = (DISPLAY_HEIGHT - 7 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "WAITING", 75, y_wait, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "WAITING", 75, y_wait, 2);
+  draw_text_vertical_ccw(left_eye_buffer, "WAITING", 7, 75, y_wait, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "WAITING", 7, 75, y_wait, 2);
   
   int y_ip = (DISPLAY_HEIGHT - ip.length() * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, ip.c_str(), 120, y_ip, 2);
-  draw_text_vertical_ccw(right_eye_buffer, ip.c_str(), 120, y_ip, 2);
+  draw_text_vertical_ccw(left_eye_buffer, ip.c_str(), strlen(ip.c_str()), 120, y_ip, 2);
+  draw_text_vertical_ccw(right_eye_buffer, ip.c_str(), strlen(ip.c_str()), 120, y_ip, 2);
   
   uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
   for (uint32_t i = 0; i < npix / 2; i++) {
@@ -236,12 +236,12 @@ void show_i2c_ready_display() {
   clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
 
   int y = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "I2C", 75, y, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "I2C", 75, y, 2);
+  draw_text_vertical_ccw(left_eye_buffer, "I2C", 3, 75, y, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "I2C", 3, 75, y, 2);
 
   int y2 = (DISPLAY_HEIGHT - 2 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "OK", 120, y2, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "OK", 120, y2, 2);
+  draw_text_vertical_ccw(left_eye_buffer, "OK", 2, 120, y2, 2);
+  draw_text_vertical_ccw(right_eye_buffer, "OK", 2, 120, y2, 2);
 
   uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
   for (uint32_t i = 0; i < npix / 2; i++) {

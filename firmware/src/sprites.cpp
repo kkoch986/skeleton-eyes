@@ -2,6 +2,8 @@
 #include "display.h"
 #include "generated_sprites.h"
 
+#include <math.h>
+
 void decompress_rle(const uint8_t* compressed_data, uint16_t* buffer, uint16_t size) {
   uint32_t buffer_pos = 0;
   uint16_t data_pos = 0;
@@ -436,9 +438,9 @@ void draw_char_scaled_rotated(uint16_t *buffer, int x, int y,
   }
 }
 
-void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int x, int y_top, int scale) {
+void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int len, int x, int y_top, int scale) {
   int char_h = FONT_H * scale;
-  int len = strlen(text);
+  if (len < 1) len = 1;
   for (int i = 0; i < len; i++) {
     int y = y_top + (len - 1 - i) * char_h;
     draw_char_scaled_rotated(buffer, x, y, get_font_bitmap(text[i]), scale, true);
@@ -451,25 +453,60 @@ void draw_text_display(const char *text) {
   clear_frame_buffer(left_eye_buffer, display_text_bg);
   clear_frame_buffer(right_eye_buffer, display_text_bg);
 
-  int char_h = FONT_H * 2;
-  int chars_per_col = DISPLAY_HEIGHT / char_h;
   int len = strlen(text);
-  int num_cols = (len + chars_per_col - 1) / chars_per_col;
-  if (num_cols < 1) num_cols = 1;
+  if (len > 0) {
+    /* The panel is a 240x240 circle, so columns near the left/right edge of
+       a full-square layout get clipped off the visible round surface.
+       Lay columns out left->right and give each one a height equal to the
+       circle's vertical span at that column's x position, so every glyph
+       stays on-panel. Radius is inset by one glyph half-width so glyph
+       corners at the block edges never leave the visible circle. */
+    const int scale = 2;
+    const int char_w = FONT_W * scale;
+    const int char_h = FONT_H * scale;
+    const int spacing = char_w + 2;
+    const int radius = DISPLAY_HEIGHT / 2 - char_w / 2 - 4;
+    const int cx = DISPLAY_WIDTH / 2;
 
-  int spacing = (num_cols > 1) ? (DISPLAY_WIDTH / num_cols) : 0;
-  int x_start = (DISPLAY_WIDTH - spacing * num_cols + spacing) / 2;
+    enum { MAX_TEXT_COLS = 16 };
+    int col_x[MAX_TEXT_COLS];
+    int col_cap[MAX_TEXT_COLS];
+    int num_cols = 0;
 
-  for (int col = 0; col < num_cols; col++) {
-    int start = col * chars_per_col;
-    int col_len = len - start;
-    if (col_len > chars_per_col) col_len = chars_per_col;
+    /* pass 1: place columns inside the widest inscribed rectangle so every
+       column is fully on-panel, sizing each by the circle span at its x */
+    int band_half = radius * 7071 / 10000;   /* radius / sqrt(2) */
+    int x = cx - band_half;
+    int remaining = len;
+    while (remaining > 0 && num_cols < MAX_TEXT_COLS) {
+      int dx = x + char_w / 2 - cx;
+      int half = (int)sqrt((float)(radius * radius - dx * dx));
+      int capacity = half * 2 / char_h;
+      if (capacity < 1) capacity = 1;
 
-    int x = x_start + col * spacing;
-    int y_total = col_len * char_h;
-    int y_top = (DISPLAY_HEIGHT - y_total) / 2;
+      col_x[num_cols] = x;
+      col_cap[num_cols] = capacity;
+      remaining -= capacity;
+      num_cols++;
+      x += spacing;
+    }
 
-    draw_text_vertical_ccw(left_eye_buffer, text + start, x, y_top, 2);
+    /* pass 2: center the finished block horizontally */
+    int block_w = col_x[num_cols - 1] + char_w - col_x[0];
+    int shift = (DISPLAY_WIDTH - block_w) / 2 - col_x[0];
+
+    int pos = 0;
+    for (int col = 0; col < num_cols; col++) {
+      int col_len = len - pos;
+      if (col_len > col_cap[col]) col_len = col_cap[col];
+
+      int col_x_final = col_x[col] + shift;
+      int y_total = col_len * char_h;
+      int y_top = (DISPLAY_HEIGHT - y_total) / 2;
+
+      draw_text_vertical_ccw(left_eye_buffer, text + pos, col_len, col_x_final, y_top, scale);
+      pos += col_len;
+    }
   }
 
   uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
