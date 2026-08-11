@@ -27,6 +27,10 @@
 #define CMD_SPRITE_MODE  0x16
 #define CMD_GET_MODE     0x17
 #define CMD_SET_SPRITE   0x18
+#define CMD_DISPLAY_TEXT 0x19
+#define CMD_CLEAR_TEXT   0x1A
+#define CMD_TEXT_COLOR   0x1B
+#define CMD_TEXT_BG      0x1C
 
 #define RGB565(r, g, b) ((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3))
 
@@ -131,6 +135,11 @@ void printHelp() {
   Serial.println("animate <ms> <i>...  Loop sprite indices at given speed");
   Serial.println("                     e.g. animate 100 0 1 2 3 4 5 6 7 8");
   Serial.println("stop                 Stop sprite animation");
+  Serial.println("curve <f> <m> <s>    Eyelid curve (falloff min strength 0-255)");
+  Serial.println("text <string>        Display text on eye screen (max 62 chars)");
+  Serial.println("text off             Clear displayed text");
+  Serial.println("textcolor <r g b|hex> Set text color (3 bytes or 4-digit hex)");
+  Serial.println("textbg <r g b|hex>   Set text background color");
   Serial.println("help / ?             This help");
   Serial.println();
 }
@@ -245,6 +254,24 @@ void processSerialCommand(String cmd) {
   else if (cmd.startsWith("smoothing ")) {
     setSmoothing(parseSmoothing(cmd.substring(10)));
   }
+  else if (cmd.startsWith("curve ")) {
+    int f1 = cmd.indexOf(' ', 6);
+    if (f1 > 0) {
+      int f2 = cmd.indexOf(' ', f1 + 1);
+      if (f2 > 0) {
+        uint8_t f = (uint8_t)constrain(cmd.substring(6, f1).toInt(), 0, 255);
+        uint8_t m = (uint8_t)constrain(cmd.substring(f1 + 1, f2).toInt(), 0, 255);
+        uint8_t s = (uint8_t)constrain(cmd.substring(f2 + 1).toInt(), 0, 255);
+        setCurveParams(f, m, s);
+      } else {
+        Serial.println("usage: curve <falloff> <min> <strength>");
+      }
+    }
+  }
+  else if (cmd == "text off")             { clearText(); }
+  else if (cmd.startsWith("textcolor "))     { setTextColor(parseRGB(cmd.substring(10))); }
+  else if (cmd.startsWith("textbg "))        { setTextBG(parseRGB(cmd.substring(7))); }
+  else if (cmd.startsWith("text "))          { displayText(cmd.substring(5)); }
   else if (cmd == "idle")             { idleEyes(); }
   else if (cmd.startsWith("wifi ssid "))   { setWiFiSSID(cmd.substring(10)); }
   else if (cmd.startsWith("wifi pass "))   { setWiFiPass(cmd.substring(10)); }
@@ -349,6 +376,38 @@ void setSquintLevel(uint8_t level) {
   Wire.write(CMD_SQUINT);
   Wire.write(level);
   if (send_i2c()) Serial.printf("Squint: %d\n", level);
+}
+
+void displayText(String text) {
+  if (text.length() > 62) text = text.substring(0, 62);
+  Wire.beginTransmission(EYE_I2C_ADDR);
+  Wire.write(CMD_DISPLAY_TEXT);
+  for (unsigned int i = 0; i < text.length(); i++) {
+    Wire.write(text[i]);
+  }
+  if (send_i2c()) Serial.printf("Text: \"%s\"\n", text.c_str());
+}
+
+void clearText() {
+  Wire.beginTransmission(EYE_I2C_ADDR);
+  Wire.write(CMD_CLEAR_TEXT);
+  if (send_i2c()) Serial.println("Text cleared");
+}
+
+void setTextColor(uint16_t rgb) {
+  Wire.beginTransmission(EYE_I2C_ADDR);
+  Wire.write(CMD_TEXT_COLOR);
+  Wire.write((uint8_t)(rgb & 0xFF));
+  Wire.write((uint8_t)((rgb >> 8) & 0xFF));
+  if (send_i2c()) Serial.printf("Text color: #%04X\n", rgb);
+}
+
+void setTextBG(uint16_t rgb) {
+  Wire.beginTransmission(EYE_I2C_ADDR);
+  Wire.write(CMD_TEXT_BG);
+  Wire.write((uint8_t)(rgb & 0xFF));
+  Wire.write((uint8_t)((rgb >> 8) & 0xFF));
+  if (send_i2c()) Serial.printf("Text background: #%04X\n", rgb);
 }
 
 void setScleraRGB(uint16_t rgb) {
@@ -508,7 +567,7 @@ void readEyeStatus() {
   Wire.write(CMD_STATUS);
   Wire.endTransmission(false);
 
-  if (Wire.requestFrom(EYE_I2C_ADDR, 9) == 9) {
+  if (Wire.requestFrom(EYE_I2C_ADDR, 31) == 31) {
     int16_t x = Wire.read() | (Wire.read() << 8);
     int16_t y = Wire.read() | (Wire.read() << 8);
     uint8_t squint = Wire.read();
@@ -516,12 +575,35 @@ void readEyeStatus() {
     uint8_t mode = Wire.read();
     uint8_t autonomous = Wire.read();
     uint8_t ota = Wire.read();
-    const char* ota_state = ota & 1 ? "Updating" : (ota & 2 ? "Waiting" : "None");
-    Serial.printf("Status - X:%d Y:%d Squint:%d External:%s Mode:%s Autonomous:%s OTA:%s\n",
-                  x, y, squint, external ? "Yes" : "No",
-                  mode ? "Sprite" : "Procedural",
-                  autonomous ? "Yes" : "No",
-                  ota_state);
+    uint8_t smoothing = Wire.read();
+    uint8_t auto_blink = Wire.read();
+    uint16_t blink_interval = Wire.read() | (Wire.read() << 8);
+    uint8_t sprite_ix = Wire.read();
+    uint16_t sclera = Wire.read() | (Wire.read() << 8);
+    uint16_t iris_med = Wire.read() | (Wire.read() << 8);
+    uint16_t iris_dark = Wire.read() | (Wire.read() << 8);
+    uint8_t falloff = Wire.read();
+    uint8_t curve_min = Wire.read();
+    uint8_t closure = Wire.read();
+    uint8_t i2c_init = Wire.read();
+    uint8_t master = Wire.read();
+    uint16_t blink_dur = Wire.read() | (Wire.read() << 8);
+    int16_t cur_x = Wire.read() | (Wire.read() << 8);
+    int16_t cur_y = Wire.read() | (Wire.read() << 8);
+    Serial.printf("Status - target X:%d Y:%d render X:%d Y:%d\n", x, y, cur_x, cur_y);
+    Serial.printf("  squint:%d blink:%dms autoblink:%s interval:%dms\n",
+                  squint, blink_dur, auto_blink ? "on" : "off", blink_interval);
+    Serial.printf("  smoothing:%d ext_ctrl:%s mode:%s autonomous:%s sprite:%d\n",
+                  smoothing, external ? "yes" : "no",
+                  mode ? "sprite" : "procedural",
+                  autonomous ? "yes" : "no",
+                  sprite_ix == 255 ? -1 : sprite_ix);
+    Serial.printf("  sclera:#%04X iris:#%04X/%04X curve:%d/%d/%d\n",
+                  sclera, iris_med, iris_dark, falloff, curve_min, closure);
+    Serial.printf("  i2c_init:%s master:%s text:%s ota:%s\n",
+                  i2c_init ? "yes" : "no", master ? "yes" : "no",
+                  ota & 4 ? "active" : "none",
+                  ota & 1 ? "updating" : (ota & 2 ? "waiting" : "none"));
   } else {
     Serial.println("Status read failed");
   }

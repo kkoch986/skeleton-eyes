@@ -135,8 +135,8 @@ void eye_smoothing(uint8_t level) {
     _send2(EYE_DEFAULT_ADDR, EYE_CMD_SMOOTHING, level);
 }
 
-void eye_sprite_mode(bool on) {
-    _send2(EYE_DEFAULT_ADDR, EYE_CMD_SPRITE_MODE, on ? 1 : 0);
+void eye_sprite_mode(uint8_t mode) {
+    _send2(EYE_DEFAULT_ADDR, EYE_CMD_SPRITE_MODE, mode);
 }
 
 void eye_sprite_index(uint8_t index) {
@@ -179,21 +179,66 @@ void eye_wifi_forget(void) {
     _send1(EYE_DEFAULT_ADDR, EYE_CMD_WIFI_FORGET);
 }
 
+void eye_display_text(const char *text) {
+    uint8_t addr = EYE_DEFAULT_ADDR;
+    size_t len = strlen(text);
+    if (len > 62) len = 62;
+    uint8_t buf[63] = {EYE_CMD_DISPLAY_TEXT};
+    memcpy(buf + 1, text, len);
+    _transmit(addr, buf, 1 + len);
+}
+
+void eye_clear_text(void) {
+    _send1(EYE_DEFAULT_ADDR, EYE_CMD_CLEAR_TEXT);
+}
+
+void eye_text_color(uint16_t rgb565) {
+    _send3(EYE_DEFAULT_ADDR, EYE_CMD_TEXT_COLOR, rgb565 & 0xFF, (rgb565 >> 8) & 0xFF);
+}
+
+void eye_text_bg(uint16_t rgb565) {
+    _send3(EYE_DEFAULT_ADDR, EYE_CMD_TEXT_BG, rgb565 & 0xFF, (rgb565 >> 8) & 0xFF);
+}
+
+uint8_t eye_wifi_status(void) {
+    _send1(EYE_DEFAULT_ADDR, EYE_CMD_WIFI_STATUS);
+    uint8_t buf[1];
+    if (!_request(EYE_DEFAULT_ADDR, buf, 1))
+        return 0xFF;
+    return buf[0];
+}
+
 /* ------------------------------------------------------------------ */
 /*  Read functions                                                     */
 /* ------------------------------------------------------------------ */
 
 bool eye_read_status(eye_status_t *status, uint8_t addr) {
     _send1(addr, EYE_CMD_STATUS);
-    uint8_t buf[9];
-    if (!_request(addr, buf, 9))
+    uint8_t buf[EYE_STATUS_BYTES];
+    if (!_request(addr, buf, EYE_STATUS_BYTES))
         return false;
-    status->x                 = (int16_t)(buf[0] | (buf[1] << 8));
-    status->y                 = (int16_t)(buf[2] | (buf[3] << 8));
-    status->squint            = buf[4];
-    status->external_control  = buf[5];
-    status->sprite_mode      = buf[6];
-    status->autonomous        = buf[7];
+    status->x                      = (int16_t)(buf[0] | (buf[1] << 8));
+    status->y                      = (int16_t)(buf[2] | (buf[3] << 8));
+    status->squint                 = buf[4];
+    status->external_control       = buf[5] != 0;
+    status->sprite_mode            = buf[6] != 0;
+    status->autonomous             = buf[7] != 0;
+    status->ota_flags              = buf[8];
+    status->smoothing              = buf[9] / 255.0f;
+    status->auto_blink             = buf[10] != 0;
+    status->auto_blink_interval_ms = (uint16_t)(buf[11] | (buf[12] << 8));
+    status->sprite_index           = buf[13];
+    status->sclera_color           = (uint16_t)(buf[14] | (buf[15] << 8));
+    status->iris_med_color         = (uint16_t)(buf[16] | (buf[17] << 8));
+    status->iris_dark_color        = (uint16_t)(buf[18] | (buf[19] << 8));
+    status->curve_falloff          = buf[20] / 255.0f;
+    status->curve_minimum          = buf[21] / 255.0f;
+    status->closure_strength       = buf[22] / 255.0f;
+    status->i2c_initialized        = buf[23] != 0;
+    status->i2c_master_detected    = buf[24] != 0;
+    status->blink_duration_ms      = (uint16_t)(buf[25] | (buf[26] << 8));
+    status->current_x              = (int16_t)(buf[27] | (buf[28] << 8));
+    status->current_y              = (int16_t)(buf[29] | (buf[30] << 8));
     return true;
 }
 

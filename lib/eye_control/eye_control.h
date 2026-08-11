@@ -31,17 +31,38 @@ extern "C" {
 #define EYE_CMD_SPRITE_MODE     0x16
 #define EYE_CMD_GET_MODE        0x17
 #define EYE_CMD_SET_SPRITE      0x18
+#define EYE_CMD_DISPLAY_TEXT    0x19
+#define EYE_CMD_CLEAR_TEXT      0x1A
+#define EYE_CMD_TEXT_COLOR      0x1B
+#define EYE_CMD_TEXT_BG         0x1C
 
 #define EYE_DEFAULT_ADDR        0x42
 #define EYE_SPRITE_NONE         255
+#define EYE_STATUS_BYTES        31
 
 typedef struct {
-    int16_t x;
-    int16_t y;
+    int16_t x;                      /* target look x */
+    int16_t y;                      /* target look y */
     uint8_t squint;
     bool    external_control;
     bool    sprite_mode;
     bool    autonomous;
+    uint8_t ota_flags;
+    float   smoothing;              /* 0=instant, 1=stuck */
+    bool    auto_blink;
+    uint16_t auto_blink_interval_ms;
+    uint8_t sprite_index;           /* EYE_SPRITE_NONE when none */
+    uint16_t sclera_color;
+    uint16_t iris_med_color;
+    uint16_t iris_dark_color;
+    float   curve_falloff;
+    float   curve_minimum;
+    float   closure_strength;
+    bool    i2c_initialized;
+    bool    i2c_master_detected;
+    uint16_t blink_duration_ms;
+    int16_t current_x;              /* rendered position */
+    int16_t current_y;
 } eye_status_t;
 
 /* I2C transport — implement these for your platform */
@@ -62,7 +83,7 @@ void    eye_auto_blink(bool on);
 void    eye_auto_blink_speed(uint16_t interval_ms);
 void    eye_idle(void);
 void    eye_smoothing(uint8_t level);
-void    eye_sprite_mode(bool on);
+void    eye_sprite_mode(uint8_t mode);
 void    eye_sprite_index(uint8_t index);
 void    eye_reset(void);
 void    eye_reset_device(void);
@@ -70,6 +91,11 @@ void    eye_wifi_ssid(const char *ssid);
 void    eye_wifi_pass(const char *pass);
 void    eye_wifi_connect(void);
 void    eye_wifi_forget(void);
+void    eye_display_text(const char *text);
+void    eye_clear_text(void);
+void    eye_text_color(uint16_t rgb565);
+void    eye_text_bg(uint16_t rgb565);
+uint8_t eye_wifi_status(void);
 bool    eye_read_status(eye_status_t *status, uint8_t addr);
 uint8_t eye_get_mode(uint8_t addr);
 
