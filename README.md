@@ -1,5 +1,7 @@
 # Skeleton Eye
 
+[![Tindie](https://static.tindie.com/badges/tindie-larges.png)](https://www.tindie.com/products/43596/)
+
 Dual 1.28" TFT animatronic eyes with an I2C-controlled management board.
 
 ## Repository Layout
