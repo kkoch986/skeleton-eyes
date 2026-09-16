@@ -27,19 +27,57 @@ static void render_frame(const eye_frame_t *f) {
 
   if (f->sprite) {
     if (f->sprite_index >= 0 && f->sprite_index < sprite_count) {
+#if PANEL_SINGLE_BUFFER
+      /* Shared buffer: decode and push each eye in turn. The panels present
+         frames upright (controller rotation for the flipped one, GC9A01's
+         right remains rotated and is handled in the mirror flag), so both
+         sprites decode identically. With PANEL_BAND_COUNT==1 this is the
+         original full-frame flow. */
+      /* Push each eye's bands back-to-back: interleaving the eyes puts
+       * a full band-time between an eye's own bands and tears a visible
+       * seam across moving frames. */
+      for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+        decompress_sprite(&sprite_frames[f->sprite_index], shared_eye_buffer, band_top);
+        if (f->blink > 0.0f) {
+          apply_sprite_blink_overlay(shared_eye_buffer, f->blink);
+        }
+        send_frame_buffer(LEFT_EYE_CS, shared_eye_buffer, band_top);
+      }
+      for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+        decompress_sprite(&sprite_frames[f->sprite_index], shared_eye_buffer, band_top);
+        if (f->blink > 0.0f) {
+          apply_sprite_blink_overlay(shared_eye_buffer, f->blink);
+        }
+        send_frame_buffer(RIGHT_EYE_CS, shared_eye_buffer, band_top);
+      }
+#else
       render_sprite_frame(f->sprite_index, left_eye_buffer, right_eye_buffer);
       if (f->blink > 0.0f) {
         apply_sprite_blink_overlay(left_eye_buffer, f->blink);
         apply_sprite_blink_overlay(right_eye_buffer, f->blink);
       }
-      send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
-      send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
+      send_frame_buffer(LEFT_EYE_CS, left_eye_buffer, 0);
+      send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer, 0);
+#endif
     }
   } else {
-    draw_skeleton_eye_buffered(left_eye_buffer, f, f->squint_left, false);
-    draw_skeleton_eye_buffered(right_eye_buffer, f, f->squint_right, true);
-    send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
-    send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
+#if PANEL_SINGLE_BUFFER
+    /* Shared buffer: push each eye's bands back-to-back so a moving eye
+     * does not tear across the band boundary. */
+    for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+      draw_skeleton_eye_buffered(shared_eye_buffer, f, f->squint_left, false, band_top);
+      send_frame_buffer(LEFT_EYE_CS, shared_eye_buffer, band_top);
+    }
+    for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+      draw_skeleton_eye_buffered(shared_eye_buffer, f, f->squint_right, PANEL_RIGHT_EYE_MIRROR, band_top);
+      send_frame_buffer(RIGHT_EYE_CS, shared_eye_buffer, band_top);
+    }
+#else
+    draw_skeleton_eye_buffered(left_eye_buffer, f, f->squint_left, false, 0);
+    draw_skeleton_eye_buffered(right_eye_buffer, f, f->squint_right, PANEL_RIGHT_EYE_MIRROR, 0);
+    send_frame_buffer(LEFT_EYE_CS, left_eye_buffer, 0);
+    send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer, 0);
+#endif
   }
 
   display_bus_unlock();
@@ -146,15 +184,20 @@ uint16_t render_3d_iris(int16_t x, int16_t y, int16_t iris_x, int16_t iris_y,
 /* ------------------------------------------------------------------ */
 
 void draw_skeleton_eye_buffered(uint16_t *buffer, const eye_frame_t *f,
-                                float squint, bool mirror) {
-  int16_t center_x = DISPLAY_WIDTH / 2;
-  int16_t center_y = DISPLAY_HEIGHT / 2;
-  int16_t socket_radius = 140;
-  int16_t sclera_radius = 110;
-  int16_t iris_radius = 45;
-  int16_t pupil_radius = 22;
+                                float squint, bool mirror, uint16_t band_top) {
+  int16_t center_x = PANEL_WIDTH / 2;
+  int16_t center_y = PANEL_HEIGHT / 2;
+  int16_t socket_radius = (int16_t)(EYE_SOCKET_RADIUS * EYE_SCALE);
+  int16_t sclera_radius = (int16_t)(EYE_SCLERA_RADIUS * EYE_SCALE);
+  int16_t iris_radius = (int16_t)(EYE_IRIS_RADIUS * EYE_SCALE);
+  int16_t pupil_radius = (int16_t)(EYE_PUPIL_RADIUS * EYE_SCALE);
 
   int16_t effective_look_x = mirror ? -f->look_x : f->look_x;
+  /* The mirror flag draws the right eye mirrored in x and y; the two
+   * builds re-cancel that per-panel: GC9A01's right panel presents a
+   * 180-degree rotation on screen, so the mirrored draw ends up reading
+   * identically to the left. ILI9341 draws both eyes un-mirrored and lets
+   * the controller rotate the flipped panel instead. */
   int16_t effective_look_y = mirror ? -f->look_y : f->look_y;
 
   int16_t max_iris_offset = sclera_radius - iris_radius - 5;
@@ -187,9 +230,9 @@ void draw_skeleton_eye_buffered(uint16_t *buffer, const eye_frame_t *f,
 
   clear_frame_buffer(buffer, COLOR_BLACK);
 
-  uint16_t *pixel_ptr = buffer;
+  for (int16_t y = band_top; y < band_top + PANEL_BUFFER_ROWS; y++) {
+    uint16_t *pixel_ptr = buffer + (uint32_t)(y - band_top) * PANEL_WIDTH;
 
-  for (int16_t y = 0; y < DISPLAY_HEIGHT; y++) {
     int32_t dy_center = y - center_y;
     int32_t dy_iris = y - iris_y;
     int32_t dy_pupil = y - pupil_y;
@@ -200,7 +243,7 @@ void draw_skeleton_eye_buffered(uint16_t *buffer, const eye_frame_t *f,
     int32_t dy_pupil_sq = dy_pupil * dy_pupil;
     int32_t dy_reflection_sq = dy_reflection * dy_reflection;
 
-    /* curved eyelid bounds for this row (previously per-pixel) */
+    /* curved eyelid bounds for this row */
     int16_t curved_left = center_x - sclera_radius;
     int16_t curved_right = center_x + sclera_radius;
     if (has_eyelid) {
@@ -213,7 +256,7 @@ void draw_skeleton_eye_buffered(uint16_t *buffer, const eye_frame_t *f,
       curved_right = center_x + sclera_radius - curved_eyelid_closure;
     }
 
-    for (int16_t x = 0; x < DISPLAY_WIDTH; x++, pixel_ptr++) {
+    for (int16_t x = 0; x < PANEL_WIDTH; x++, pixel_ptr++) {
       uint16_t color = COLOR_BLACK;
 
       if (has_eyelid && (x < curved_left || x > curved_right)) {

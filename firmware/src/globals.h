@@ -2,6 +2,32 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include "panel_config.h"
+#include "board_config.h"
+
+/*
+ * Banded rendering.
+ *
+ * The classic ESP32's internal RAM is two disjoint heap regions; the
+ * largest single allocatable block is ~128KB, but a full 240x320 ILI9341
+ * frame is 153,600 B, which cannot be allocated contiguously. Builds that
+ * hit that restriction (single shared buffer + classic chip) split each
+ * frame into PANEL_BAND_COUNT vertical bands rendered through a
+ * PANEL_BUFFER_ROWS-tall buffer, pushing each band before drawing the
+ * next. Mirroring is row-local, so it survives the split.
+ *
+ * Every other combination (GC9A01, or S3 + ILI9341) collapses to a single
+ * full-height band, so the band-aware code paths below compile to the
+ * original full-frame behaviour.
+ */
+#if PANEL_SINGLE_BUFFER && BOARD_BANDED_FRAMEBUFFER
+  #define PANEL_BAND_COUNT 2
+  #define PANEL_BAND_HEIGHT (PANEL_HEIGHT / PANEL_BAND_COUNT)
+#else
+  #define PANEL_BAND_COUNT 1
+  #define PANEL_BAND_HEIGHT PANEL_HEIGHT
+#endif
+#define PANEL_BUFFER_ROWS PANEL_BAND_HEIGHT
 
 #define SPRITE_UNCOMPRESSED 0
 #define SPRITE_RLE_COMPRESSED 1
@@ -38,30 +64,8 @@
 
 #define MAX_SPRITE_FRAMES 64
 
-#define LEFT_EYE_CS 13
-#define RIGHT_EYE_CS 9
-#define SHARED_RST 12
-#define SHARED_DC 8
-#define SHARED_SDA 11
-#define SHARED_SCL 10
-
-#define I2C_SDA 4
-#define I2C_SCL 7
+/* GPIO pins come from board_config.h (ESP32-S3 vs ESP32 DevKit V1). */
 #define I2C_SLAVE_ADDRESS 0x42
-#define BOOT_BUTTON 0
-#define LED_PIN 15
-
-#define GC9A01_SWRESET 0x01
-#define GC9A01_SLPOUT 0x11
-#define GC9A01_DISPON 0x29
-#define GC9A01_CASET 0x2A
-#define GC9A01_RASET 0x2B
-#define GC9A01_RAMWR 0x2C
-#define GC9A01_MADCTL 0x36
-#define GC9A01_COLMOD 0x3A
-
-#define DISPLAY_WIDTH 240
-#define DISPLAY_HEIGHT 240
 
 #define COLOR_BLACK 0x0000
 #define COLOR_WHITE 0xFFFF
@@ -104,8 +108,18 @@ struct lighting_t {
 
 extern SPIClass *hspi;
 extern SPISettings spi_settings;
+#if PANEL_SINGLE_BUFFER
+/* ILI9341: one shared framebuffer. Each eye is drawn and pushed before
+   the next is drawn; the renderer never needs both at once. Allocated
+   from the heap at boot — the classic ESP32's static BSS region is only
+   ~125KB, too small for a 153KB framebuffer. */
+extern uint16_t *shared_eye_buffer;
+#define left_eye_buffer shared_eye_buffer
+#define right_eye_buffer shared_eye_buffer
+#else
 extern uint16_t left_eye_buffer[];
 extern uint16_t right_eye_buffer[];
+#endif
 
 extern SpriteFrame sprite_frames[];
 extern uint8_t sprite_count;

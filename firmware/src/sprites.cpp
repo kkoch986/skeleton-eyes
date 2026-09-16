@@ -4,20 +4,47 @@
 
 #include <math.h>
 
-void decompress_rle(const uint8_t* compressed_data, uint16_t* buffer, uint16_t size) {
+/* Map a 240x240 sprite source index into the active panel band buffer.
+   On the tall ILI9341 panels the square sprite block is centred
+   vertically. `band_top` is the first panel row this buffer holds; with a
+   full-height buffer band_top is 0. Returns UINT32_MAX when the sprite
+   pixel falls outside the currently rendered band (banded builds only —
+   the sprite block spans the 320-row panel across two 160-row bands). */
+static inline uint32_t sprite_pixel_dst(uint32_t src_linear, uint16_t band_top) {
+  uint32_t sx = src_linear % SPRITE_BAND_W;
+  uint32_t sy = src_linear / SPRITE_BAND_W;
+  uint32_t panel_y = sy + SPRITE_BAND_Y;
+  if (panel_y < band_top || panel_y >= band_top + PANEL_BUFFER_ROWS) {
+    return UINT32_MAX;
+  }
+  return (panel_y - band_top) * PANEL_WIDTH + (sx + SPRITE_BAND_X);
+}
+
+/* Map an already-computed panel (row, col) pair into the band buffer, or
+   UINT32_MAX when the row is outside the current band. */
+static inline uint32_t pixel_dst(uint32_t panel_y, uint32_t col, uint16_t band_top) {
+  if (panel_y < band_top || panel_y >= band_top + PANEL_BUFFER_ROWS) {
+    return UINT32_MAX;
+  }
+  return (panel_y - band_top) * PANEL_WIDTH + col;
+}
+
+void decompress_rle(const uint8_t* compressed_data, uint16_t* buffer, uint16_t size,
+                    uint16_t band_top) {
   uint32_t buffer_pos = 0;
   uint16_t data_pos = 0;
-  const uint32_t max_pixels = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-  
+  const uint32_t max_pixels = (uint32_t)SPRITE_BAND_W * SPRITE_BAND_H;
+
   while (buffer_pos < max_pixels && data_pos + 2 < size) {
     uint8_t count = pgm_read_byte_near(compressed_data + data_pos++);
     uint8_t color_low = pgm_read_byte_near(compressed_data + data_pos++);
     uint8_t color_high = pgm_read_byte_near(compressed_data + data_pos++);
     uint16_t color = (color_high << 8) | color_low;
-    
+
     uint32_t pixels_to_write = min((uint32_t)count, max_pixels - buffer_pos);
     for (uint32_t i = 0; i < pixels_to_write; i++) {
-      buffer[buffer_pos++] = color;
+      uint32_t dst = sprite_pixel_dst(buffer_pos++, band_top);
+      if (dst != UINT32_MAX) buffer[dst] = color;
     }
     if (count > pixels_to_write) {
       break;
@@ -25,7 +52,8 @@ void decompress_rle(const uint8_t* compressed_data, uint16_t* buffer, uint16_t s
   }
 }
 
-void decompress_rle_upscale(const uint8_t* compressed_data, uint16_t* buffer, uint16_t size) {
+void decompress_rle_upscale(const uint8_t* compressed_data, uint16_t* buffer, uint16_t size,
+                            uint16_t band_top) {
   const uint16_t src_w = 120;
   const uint16_t src_h = 120;
   uint16_t src_pos = 0;
@@ -44,10 +72,19 @@ void decompress_rle_upscale(const uint8_t* compressed_data, uint16_t* buffer, ui
       uint16_t sy = src_pos / src_w;
       uint16_t dx = sx * 2;
       uint16_t dy = sy * 2;
-      buffer[dy * DISPLAY_WIDTH + dx] = color;
-      buffer[dy * DISPLAY_WIDTH + dx + 1] = color;
-      buffer[(dy + 1) * DISPLAY_WIDTH + dx] = color;
-      buffer[(dy + 1) * DISPLAY_WIDTH + dx + 1] = color;
+      uint32_t panel_x = dx + SPRITE_BAND_X;
+      uint32_t panel_y0 = dy + SPRITE_BAND_Y;
+      uint32_t panel_y1 = panel_y0 + 1;
+      uint32_t dst0 = pixel_dst(panel_y0, panel_x, band_top);
+      uint32_t dst1 = pixel_dst(panel_y1, panel_x, band_top);
+      if (dst0 != UINT32_MAX) {
+        buffer[dst0] = color;
+        buffer[dst0 + 1] = color;
+      }
+      if (dst1 != UINT32_MAX) {
+        buffer[dst1] = color;
+        buffer[dst1 + 1] = color;
+      }
       src_pos++;
     }
     if (count > pixels_to_write) {
@@ -56,102 +93,119 @@ void decompress_rle_upscale(const uint8_t* compressed_data, uint16_t* buffer, ui
   }
 }
 
-void decompress_palette(const uint8_t* compressed_data, const uint8_t* palette_data, 
-                       uint16_t* buffer, uint8_t bits_per_pixel, uint16_t size) {
-  uint16_t buffer_pos = 0;
+void decompress_palette(const uint8_t* compressed_data, const uint8_t* palette_data,
+                        uint16_t* buffer, uint8_t bits_per_pixel, uint16_t size,
+                        uint16_t band_top) {
+  uint32_t buffer_pos = 0;
   uint16_t data_pos = 0;
   uint8_t pixels_per_byte = 8 / bits_per_pixel;
   uint8_t pixel_mask = (1 << bits_per_pixel) - 1;
-  
-  while (buffer_pos < DISPLAY_WIDTH * DISPLAY_HEIGHT && data_pos < size) {
+  const uint32_t max_pixels = (uint32_t)SPRITE_BAND_W * SPRITE_BAND_H;
+
+  while (buffer_pos < max_pixels && data_pos < size) {
     uint8_t packed_pixels = pgm_read_byte_near(compressed_data + data_pos++);
-    
-    for (uint8_t i = 0; i < pixels_per_byte && buffer_pos < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
+
+    for (uint8_t i = 0; i < pixels_per_byte && buffer_pos < max_pixels; i++) {
       uint8_t pixel_index = (packed_pixels >> (i * bits_per_pixel)) & pixel_mask;
       uint16_t color = pgm_read_word_near(palette_data + pixel_index * 2);
-      buffer[buffer_pos++] = color;
+      uint32_t dst = sprite_pixel_dst(buffer_pos++, band_top);
+      if (dst != UINT32_MAX) buffer[dst] = color;
     }
   }
 }
 
-void decompress_sprite(const SpriteFrame* sprite, uint16_t* buffer) {
+void decompress_sprite(const SpriteFrame* sprite, uint16_t* buffer, uint16_t band_top) {
   if (!sprite) return;
-  
+
   const SpriteHeader* header = &sprite->header;
-  
+
   clear_frame_buffer(buffer, COLOR_BLACK);
-  
+
   switch (header->compression_type) {
     case SPRITE_UNCOMPRESSED:
-      for (uint32_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
-        buffer[i] = pgm_read_word_near(sprite->compressed_data + i * 2);
+      for (uint32_t i = 0; i < (uint32_t)SPRITE_BAND_W * SPRITE_BAND_H; i++) {
+        uint32_t dst = sprite_pixel_dst(i, band_top);
+        if (dst != UINT32_MAX) {
+          buffer[dst] = pgm_read_word_near(sprite->compressed_data + i * 2);
+        }
       }
       break;
-      
+
     case SPRITE_RLE_COMPRESSED:
       if (sprite->upscale) {
-        decompress_rle_upscale(sprite->compressed_data, buffer, header->compressed_size);
+        decompress_rle_upscale(sprite->compressed_data, buffer, header->compressed_size, band_top);
       } else {
-        decompress_rle(sprite->compressed_data, buffer, header->compressed_size);
+        decompress_rle(sprite->compressed_data, buffer, header->compressed_size, band_top);
       }
       break;
-      
+
     case SPRITE_PALETTE_4BIT:
-      decompress_palette(sprite->compressed_data, sprite->palette_data, 
-                        buffer, 4, header->compressed_size);
+      decompress_palette(sprite->compressed_data, sprite->palette_data,
+                        buffer, 4, header->compressed_size, band_top);
       break;
-      
+
     case SPRITE_PALETTE_8BIT:
-      decompress_palette(sprite->compressed_data, sprite->palette_data, 
-                        buffer, 8, header->compressed_size);
+      decompress_palette(sprite->compressed_data, sprite->palette_data,
+                        buffer, 8, header->compressed_size, band_top);
       break;
   }
 }
 
 void apply_sprite_blink_overlay(uint16_t* buffer, float blink_amount) {
   if (blink_amount <= 0.0) return;
-  
-  uint16_t center_x = DISPLAY_WIDTH / 2;
+
+  uint16_t center_x = PANEL_WIDTH / 2;
   uint16_t blink_width = (uint16_t)(blink_amount * center_x);
-  
-  for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
+
+  for (uint16_t y = 0; y < PANEL_BUFFER_ROWS; y++) {
     for (uint16_t x = 0; x < blink_width; x++) {
-      buffer[y * DISPLAY_WIDTH + x] = COLOR_BLACK;
-      buffer[y * DISPLAY_WIDTH + (DISPLAY_WIDTH - 1 - x)] = COLOR_BLACK;
+      buffer[y * PANEL_WIDTH + x] = COLOR_BLACK;
+      buffer[y * PANEL_WIDTH + (PANEL_WIDTH - 1 - x)] = COLOR_BLACK;
     }
   }
 }
 
 void render_sprite_frame(uint8_t frame_index, uint16_t* left_buffer, uint16_t* right_buffer) {
   if (frame_index >= sprite_count) return;
-  
+
   const SpriteFrame* sprite = &sprite_frames[frame_index];
-  
-  decompress_sprite(sprite, left_buffer);
-  
-  for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
-    for (uint16_t x = 0; x < DISPLAY_WIDTH; x++) {
-      uint16_t src_index = y * DISPLAY_WIDTH + x;
+
+  decompress_sprite(sprite, left_buffer, 0);
+
+#if PANEL_ROUND
+  /* Round 240x240 boards: the right panel is physically rotated, so the
+     right eye is the left sprite rotated 90 degrees then folded 180. */
+  for (uint16_t y = 0; y < (uint16_t)SPRITE_BAND_H; y++) {
+    for (uint16_t x = 0; x < (uint16_t)SPRITE_BAND_W; x++) {
+      uint16_t src_index = y * SPRITE_BAND_W + x;
       uint16_t dst_x = y;
-      uint16_t dst_y = DISPLAY_WIDTH - 1 - x;
-      uint16_t dst_index = dst_y * DISPLAY_WIDTH + dst_x;
+      uint16_t dst_y = SPRITE_BAND_W - 1 - x;
+      uint16_t dst_index = dst_y * SPRITE_BAND_W + dst_x;
       right_buffer[dst_index] = left_buffer[src_index];
     }
   }
-  
-  for (uint16_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
+
+  for (uint16_t i = 0; i < SPRITE_BAND_W * SPRITE_BAND_H; i++) {
     left_buffer[i] = right_buffer[i];
   }
-  
-  for (uint16_t y = 0; y < DISPLAY_HEIGHT; y++) {
-    for (uint16_t x = 0; x < DISPLAY_WIDTH; x++) {
-      uint16_t src_index = y * DISPLAY_WIDTH + x;
-      uint16_t dst_x = DISPLAY_WIDTH - 1 - x;
-      uint16_t dst_y = DISPLAY_HEIGHT - 1 - y;
-      uint16_t dst_index = dst_y * DISPLAY_WIDTH + dst_x;
+
+  for (uint16_t y = 0; y < (uint16_t)SPRITE_BAND_H; y++) {
+    for (uint16_t x = 0; x < (uint16_t)SPRITE_BAND_W; x++) {
+      uint16_t src_index = y * SPRITE_BAND_W + x;
+      uint16_t dst_x = SPRITE_BAND_W - 1 - x;
+      uint16_t dst_y = SPRITE_BAND_H - 1 - y;
+      uint16_t dst_index = dst_y * SPRITE_BAND_W + dst_x;
       right_buffer[dst_index] = left_buffer[src_index];
     }
   }
+#else
+  /* Rectangular panels: the flipped panel is controller-rotated in the
+     driver, so both eyes present frames upright - right eye is a straight
+     copy of the left sprite. */
+  for (uint16_t i = 0; i < (uint16_t)SPRITE_BAND_W * SPRITE_BAND_H; i++) {
+    right_buffer[i] = left_buffer[i];
+  }
+#endif
 }
 
 void load_sprite_data() {
@@ -412,7 +466,8 @@ const uint8_t* get_font_bitmap(char c) {
 }
 
 void draw_char_scaled_rotated(uint16_t *buffer, int x, int y,
-                              const uint8_t *bitmap, int scale, bool rotate_ccw) {
+                              const uint8_t *bitmap, int scale, bool rotate_ccw,
+                              uint16_t band_top) {
   for (int row = 0; row < FONT_H; row++) {
     uint8_t bits = bitmap[row];
     for (int col = 0; col < FONT_W; col++) {
@@ -429,8 +484,9 @@ void draw_char_scaled_rotated(uint16_t *buffer, int x, int y,
         for (int sx = 0; sx < scale; sx++) {
           int px = x + bx * scale + sx;
           int py = y + by * scale + sy;
-          if (px >= 0 && px < DISPLAY_WIDTH && py >= 0 && py < DISPLAY_HEIGHT) {
-            buffer[py * DISPLAY_WIDTH + px] = display_text_color;
+          if (px >= 0 && px < PANEL_WIDTH &&
+              py >= band_top && py < band_top + PANEL_BUFFER_ROWS) {
+            buffer[(uint32_t)(py - band_top) * PANEL_WIDTH + px] = display_text_color;
           }
         }
       }
@@ -438,86 +494,88 @@ void draw_char_scaled_rotated(uint16_t *buffer, int x, int y,
   }
 }
 
-void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int len, int x, int y_top, int scale) {
+void draw_text_vertical_ccw(uint16_t *buffer, const char *text, int len, int x, int y_top,
+                            int scale, uint16_t band_top) {
   int char_h = FONT_H * scale;
   if (len < 1) len = 1;
   for (int i = 0; i < len; i++) {
     int y = y_top + (len - 1 - i) * char_h;
-    draw_char_scaled_rotated(buffer, x, y, get_font_bitmap(text[i]), scale, true);
+    draw_char_scaled_rotated(buffer, x, y, get_font_bitmap(text[i]), scale, true, band_top);
   }
 }
 
 void draw_text_display(const char *text) {
   display_bus_lock();
 
-  clear_frame_buffer(left_eye_buffer, display_text_bg);
-  clear_frame_buffer(right_eye_buffer, display_text_bg);
-
   int len = strlen(text);
-  if (len > 0) {
-    /* The panel is a 240x240 circle, so columns near the left/right edge of
-       a full-square layout get clipped off the visible round surface.
-       Lay columns out left->right and give each one a height equal to the
-       circle's vertical span at that column's x position, so every glyph
-       stays on-panel. Radius is inset by one glyph half-width so glyph
-       corners at the block edges never leave the visible circle. */
-    const int scale = 2;
-    const int char_w = FONT_W * scale;
-    const int char_h = FONT_H * scale;
-    const int spacing = char_w + 2;
-    const int radius = DISPLAY_HEIGHT / 2 - char_w / 2 - 4;
-    const int cx = DISPLAY_WIDTH / 2;
 
-    enum { MAX_TEXT_COLS = 16 };
-    int col_x[MAX_TEXT_COLS];
-    int col_cap[MAX_TEXT_COLS];
-    int num_cols = 0;
+  /* Band loop: with PANEL_BAND_COUNT==1 this runs once over the whole
+     frame and matches the original draw-text-then-push-both flow. */
+  for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+    clear_frame_buffer(left_eye_buffer, display_text_bg);
+    clear_frame_buffer(right_eye_buffer, display_text_bg);
 
-    /* pass 1: place columns inside the widest inscribed rectangle so every
-       column is fully on-panel, sizing each by the circle span at its x */
-    int band_half = radius * 7071 / 10000;   /* radius / sqrt(2) */
-    int x = cx - band_half;
-    int remaining = len;
-    while (remaining > 0 && num_cols < MAX_TEXT_COLS) {
-      int dx = x + char_w / 2 - cx;
-      int half = (int)sqrt((float)(radius * radius - dx * dx));
-      int capacity = half * 2 / char_h;
-      if (capacity < 1) capacity = 1;
+    if (len > 0) {
+      /* On the round GC9A01 panel, columns near the left/right edge of a
+         full-square layout get clipped off the visible round surface, so
+         columns are laid out with a height matching the circle's vertical
+         span at that column's x. The same layout is safe on rectangular
+         panels. Radius is inset by one glyph half-width so glyph corners at
+         the block edges never leave the visible circle. */
+      const int scale = 2;
+      const int char_w = FONT_W * scale;
+      const int char_h = FONT_H * scale;
+      const int spacing = char_w + 2;
+      const int radius = PANEL_WIDTH / 2 - char_w / 2 - 4;
+      const int cx = PANEL_WIDTH / 2;
 
-      col_x[num_cols] = x;
-      col_cap[num_cols] = capacity;
-      remaining -= capacity;
-      num_cols++;
-      x += spacing;
+      enum { MAX_TEXT_COLS = 16 };
+      int col_x[MAX_TEXT_COLS];
+      int col_cap[MAX_TEXT_COLS];
+      int num_cols = 0;
+
+      /* pass 1: place columns inside the widest inscribed rectangle so every
+         column is fully on-panel, sizing each by the circle span at its x */
+      int band_half = radius * 7071 / 10000;   /* radius / sqrt(2) */
+      int x = cx - band_half;
+      int remaining = len;
+      while (remaining > 0 && num_cols < MAX_TEXT_COLS) {
+        int dx = x + char_w / 2 - cx;
+        int half = (int)sqrt((float)(radius * radius - dx * dx));
+        int capacity = half * 2 / char_h;
+        if (capacity < 1) capacity = 1;
+
+        col_x[num_cols] = x;
+        col_cap[num_cols] = capacity;
+        remaining -= capacity;
+        num_cols++;
+        x += spacing;
+      }
+
+      /* pass 2: center the finished block horizontally */
+      int block_w = col_x[num_cols - 1] + char_w - col_x[0];
+      int shift = (PANEL_WIDTH - block_w) / 2 - col_x[0];
+
+      int pos = 0;
+      for (int col = 0; col < num_cols; col++) {
+        int col_len = len - pos;
+        if (col_len > col_cap[col]) col_len = col_cap[col];
+
+        int col_x_final = col_x[col] + shift;
+        int y_total = col_len * char_h;
+        int y_top = (PANEL_HEIGHT - y_total) / 2;
+
+        draw_text_vertical_ccw(left_eye_buffer, text + pos, col_len, col_x_final, y_top,
+                               scale, band_top);
+        pos += col_len;
+      }
     }
 
-    /* pass 2: center the finished block horizontally */
-    int block_w = col_x[num_cols - 1] + char_w - col_x[0];
-    int shift = (DISPLAY_WIDTH - block_w) / 2 - col_x[0];
+    orient_frame_buffer(left_eye_buffer);
 
-    int pos = 0;
-    for (int col = 0; col < num_cols; col++) {
-      int col_len = len - pos;
-      if (col_len > col_cap[col]) col_len = col_cap[col];
-
-      int col_x_final = col_x[col] + shift;
-      int y_total = col_len * char_h;
-      int y_top = (DISPLAY_HEIGHT - y_total) / 2;
-
-      draw_text_vertical_ccw(left_eye_buffer, text + pos, col_len, col_x_final, y_top, scale);
-      pos += col_len;
-    }
+    send_frame_buffer(LEFT_EYE_CS, left_eye_buffer, band_top);
+    send_frame_buffer(RIGHT_EYE_CS, left_eye_buffer, band_top);
   }
-
-  uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-  for (uint32_t i = 0; i < npix / 2; i++) {
-    uint16_t t = left_eye_buffer[i];
-    left_eye_buffer[i] = left_eye_buffer[npix - 1 - i];
-    left_eye_buffer[npix - 1 - i] = t;
-  }
-
-  send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
-  send_frame_buffer(RIGHT_EYE_CS, left_eye_buffer);
 
   display_bus_unlock();
 }

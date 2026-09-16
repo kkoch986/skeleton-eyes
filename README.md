@@ -26,7 +26,10 @@ skeleton-eye2/
 | Eye display controller | ESP32-S3 (LOLIN S3 Mini) | Drives 2× GC9A01 displays, I2C slave at `0x42` |
 | Management board *(optional)* | ESP32-C3 (LOLIN C3 Mini) | I2C master, serial command interface — mainly for testing |
 
-**Note:** The left eye display is physically mounted upside down. The firmware handles the 180-degree rotation automatically.
+**Note:** The left eye display is physically mounted upside down; the
+firmware handles the 180-degree rotation automatically. A non-standard
+retrofit configuration for the 12 ft Home Depot skeleton is documented at
+the end of this file.
 
 ### Wiring
 
@@ -75,3 +78,26 @@ cd management-board && make upload
 - **Serial interface**: Interactive command shell via USB serial or the included `eye.sh` script
 
 See the subdirectory READMEs for serial commands, I2C protocol details, and sprite development.
+
+---
+
+## Retrofitting the 12 ft Home Depot Skeleton (non-standard)
+
+The configuration above is the standard product, tuned around the original
+1.28" round GC9A01 panels. This section documents a separate, **non-standard
+DIY build made for one specific project**: replacing the eyes of a **12 ft
+Home Depot skeleton** (Home Accents "12 Foot Animated Skeleton") with a pair
+of **2.4" ILI9341 TFT displays (240×320)**.
+
+The 12 ft skull's eye sockets are far larger than the 24 mm aperture the
+round panels were sized for, so a bigger eyeball module fills them properly.
+That is the entire reason this configuration exists — it is not a general
+drop-in panel option, and it was verified on this one skeleton build only.
+
+Two firmware environments drive the retrofit, on either board:
+
+- `esp32-s3-devkitc-1-ili9341` — ESP32-S3 (same board as the standard build)
+- `esp32-devkitc-v1-ili9341` — classic ESP32 DevKit V1
+
+See [`firmware/README.md`](firmware/README.md) for the display wiring,
+panel behaviour, and 18-bit notes specific to the retrofit.

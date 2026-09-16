@@ -24,6 +24,6 @@ uint16_t render_3d_iris(int16_t x, int16_t y, int16_t iris_x, int16_t iris_y,
                         int32_t dist_iris_sq, int32_t iris_radius_sq, bool is_inner,
                         uint16_t med_color, uint16_t dark_color);
 void draw_skeleton_eye_buffered(uint16_t *buffer, const eye_frame_t *f,
-                                float squint, bool mirror);
+                                float squint, bool mirror, uint16_t band_top);
 void renderer_init();
 void update_eyes();

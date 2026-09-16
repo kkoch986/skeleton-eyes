@@ -13,22 +13,20 @@ void ota_display_init() {
 
   display_bus_lock();
 
-  clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
-  clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
-  
-  int y_ota = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "OTA", 3, 25, y_ota, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "OTA", 3, 25, y_ota, 2);
-  
-  uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-  for (uint32_t i = 0; i < npix / 2; i++) {
-    uint16_t t = left_eye_buffer[i];
-    left_eye_buffer[i] = left_eye_buffer[npix - 1 - i];
-    left_eye_buffer[npix - 1 - i] = t;
+  int y_ota = (PANEL_HEIGHT - 3 * FONT_H * 2) / 2;
+  for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+    clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
+    clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
+
+    draw_text_vertical_ccw(left_eye_buffer, "OTA", 3, 25, y_ota, 2, band_top);
+    draw_text_vertical_ccw(right_eye_buffer, "OTA", 3, 25, y_ota, 2, band_top);
+
+    orient_frame_buffer(left_eye_buffer);
+    orient_frame_buffer(right_eye_buffer);
+
+    send_frame_buffer(LEFT_EYE_CS, left_eye_buffer, band_top);
+    send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer, band_top);
   }
-  
-  send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
-  send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
 
   display_bus_unlock();
 }
@@ -43,8 +41,8 @@ void ota_draw_percentage(int percent) {
   int ch = FONT_W * scale;
   int tw = cw + 2 * pad;
   int th = len * ch + 2 * pad;
-  int ox = (DISPLAY_WIDTH - tw) / 2;
-  int oy = (DISPLAY_HEIGHT - th) / 2;
+  int ox = (PANEL_WIDTH - tw) / 2;
+  int oy = (PANEL_HEIGHT - th) / 2;
 
   static const int MAX_PCT_PIXELS = 20 * 96;
   uint16_t area[MAX_PCT_PIXELS];
@@ -76,20 +74,18 @@ void ota_draw_percentage(int percent) {
 
   for (int e = 0; e < 2; e++) {
     uint8_t cs = (e == 0) ? LEFT_EYE_CS : RIGHT_EYE_CS;
+    bool rev = (e == 0) && PANEL_REVERSED_BUF;
+    int wx = rev ? (PANEL_WIDTH - ox - tw) : ox;
+    int wy = rev ? (PANEL_HEIGHT - oy - th) : oy;
     select_display(cs);
-    if (e == 0) {
-      int ox2 = DISPLAY_WIDTH - ox - tw;
-      int oy2 = DISPLAY_HEIGHT - oy - th;
-      set_window(ox2, oy2, ox2 + tw - 1, oy2 + th - 1);
-      digitalWrite(SHARED_DC, HIGH);
-      hspi->beginTransaction(spi_settings);
+    set_window(wx, wy, wx + tw - 1, wy + th - 1);
+    digitalWrite(SHARED_DC, HIGH);
+    hspi->beginTransaction(spi_settings);
+    if (rev) {
       for (int i = tw * th - 1; i >= 0; i--) {
         hspi->write16(area[i]);
       }
     } else {
-      set_window(ox, oy, ox + tw - 1, oy + th - 1);
-      digitalWrite(SHARED_DC, HIGH);
-      hspi->beginTransaction(spi_settings);
       for (int i = 0; i < tw * th; i++) {
         hspi->write16(area[i]);
       }
@@ -107,7 +103,7 @@ void ota_redraw_label() {
   int lw = FONT_H * scale + 2 * pad;
   int lh = len * FONT_W * scale + 2 * pad;
   int lx = 25 - pad;
-  int ly = (DISPLAY_HEIGHT - lh) / 2;
+  int ly = (PANEL_HEIGHT - lh) / 2;
 
   uint16_t area[lw * lh];
   for (int i = 0; i < lw * lh; i++) area[i] = OTA_COLOR_BLACK;
@@ -136,20 +132,18 @@ void ota_redraw_label() {
 
   for (int e = 0; e < 2; e++) {
     uint8_t cs = (e == 0) ? LEFT_EYE_CS : RIGHT_EYE_CS;
+    bool rev = (e == 0) && PANEL_REVERSED_BUF;
+    int wx = rev ? (PANEL_WIDTH - lx - lw) : lx;
+    int wy = rev ? (PANEL_HEIGHT - ly - lh) : ly;
     select_display(cs);
-    if (e == 0) {
-      int lx2 = DISPLAY_WIDTH - lx - lw;
-      int ly2 = DISPLAY_HEIGHT - ly - lh;
-      set_window(lx2, ly2, lx2 + lw - 1, ly2 + lh - 1);
-      digitalWrite(SHARED_DC, HIGH);
-      hspi->beginTransaction(spi_settings);
+    set_window(wx, wy, wx + lw - 1, wy + lh - 1);
+    digitalWrite(SHARED_DC, HIGH);
+    hspi->beginTransaction(spi_settings);
+    if (rev) {
       for (int i = lw * lh - 1; i >= 0; i--) {
         hspi->write16(area[i]);
       }
     } else {
-      set_window(lx, ly, lx + lw - 1, ly + lh - 1);
-      digitalWrite(SHARED_DC, HIGH);
-      hspi->beginTransaction(spi_settings);
       for (int i = 0; i < lw * lh; i++) {
         hspi->write16(area[i]);
       }
@@ -161,22 +155,22 @@ void ota_redraw_label() {
 
 void ota_display_update(unsigned int progress, unsigned int total) {
   if (!ota_display_active) return;
-  int target_rows = (int)(((float)progress / total) * DISPLAY_HEIGHT);
+  int target_rows = (int)(((float)progress / total) * PANEL_HEIGHT);
   if (target_rows <= ota_fill_rows) return;
 
   display_bus_lock();
 
-  int fill_top = DISPLAY_HEIGHT - target_rows;
-  int fill_bot = DISPLAY_HEIGHT - ota_fill_rows - 1;
+  int fill_top = PANEL_HEIGHT - target_rows;
+  int fill_bot = PANEL_HEIGHT - ota_fill_rows - 1;
   if (fill_top > fill_bot) return;
   
   for (int e = 0; e < 2; e++) {
     uint8_t cs = (e == 0) ? LEFT_EYE_CS : RIGHT_EYE_CS;
     select_display(cs);
-    set_window(0, fill_top, DISPLAY_WIDTH - 1, fill_bot);
+    set_window(0, fill_top, PANEL_WIDTH - 1, fill_bot);
     digitalWrite(SHARED_DC, HIGH);
     hspi->beginTransaction(spi_settings);
-    for (int i = 0; i < DISPLAY_WIDTH * (fill_bot - fill_top + 1); i++) {
+    for (int i = 0; i < PANEL_WIDTH * (fill_bot - fill_top + 1); i++) {
       hspi->write16(OTA_COLOR_FILL);
     }
     hspi->endTransaction();
@@ -196,32 +190,31 @@ void show_waiting_display() {
 
   display_bus_lock();
 
-  clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
-  clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
-  
   String ip = WiFi.localIP().toString();
-  
-  int y_ota = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "OTA", 3, 25, y_ota, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "OTA", 3, 25, y_ota, 2);
-  
-  int y_wait = (DISPLAY_HEIGHT - 7 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "WAITING", 7, 75, y_wait, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "WAITING", 7, 75, y_wait, 2);
-  
-  int y_ip = (DISPLAY_HEIGHT - ip.length() * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, ip.c_str(), strlen(ip.c_str()), 120, y_ip, 2);
-  draw_text_vertical_ccw(right_eye_buffer, ip.c_str(), strlen(ip.c_str()), 120, y_ip, 2);
-  
-  uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-  for (uint32_t i = 0; i < npix / 2; i++) {
-    uint16_t t = left_eye_buffer[i];
-    left_eye_buffer[i] = left_eye_buffer[npix - 1 - i];
-    left_eye_buffer[npix - 1 - i] = t;
+
+  int y_ota = (PANEL_HEIGHT - 3 * FONT_H * 2) / 2;
+  int y_wait = (PANEL_HEIGHT - 7 * FONT_H * 2) / 2;
+  int y_ip = (PANEL_HEIGHT - ip.length() * FONT_H * 2) / 2;
+
+  for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+    clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
+    clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
+
+    draw_text_vertical_ccw(left_eye_buffer, "OTA", 3, 25, y_ota, 2, band_top);
+    draw_text_vertical_ccw(right_eye_buffer, "OTA", 3, 25, y_ota, 2, band_top);
+
+    draw_text_vertical_ccw(left_eye_buffer, "WAITING", 7, 75, y_wait, 2, band_top);
+    draw_text_vertical_ccw(right_eye_buffer, "WAITING", 7, 75, y_wait, 2, band_top);
+
+    draw_text_vertical_ccw(left_eye_buffer, ip.c_str(), strlen(ip.c_str()), 120, y_ip, 2, band_top);
+    draw_text_vertical_ccw(right_eye_buffer, ip.c_str(), strlen(ip.c_str()), 120, y_ip, 2, band_top);
+
+    orient_frame_buffer(left_eye_buffer);
+    orient_frame_buffer(right_eye_buffer);
+
+    send_frame_buffer(LEFT_EYE_CS, left_eye_buffer, band_top);
+    send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer, band_top);
   }
-  
-  send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
-  send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
 
   display_bus_unlock();
 }
@@ -232,29 +225,25 @@ void show_i2c_ready_display() {
 
   display_bus_lock();
 
-  clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
-  clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
+  int y = (PANEL_HEIGHT - 3 * FONT_H * 2) / 2;
+  int y2 = (PANEL_HEIGHT - 2 * FONT_H * 2) / 2;
 
-  int y = (DISPLAY_HEIGHT - 3 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "I2C", 3, 75, y, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "I2C", 3, 75, y, 2);
+  for (uint16_t band_top = 0; band_top < PANEL_HEIGHT; band_top += PANEL_BUFFER_ROWS) {
+    clear_frame_buffer(left_eye_buffer, OTA_COLOR_BLACK);
+    clear_frame_buffer(right_eye_buffer, OTA_COLOR_BLACK);
 
-  int y2 = (DISPLAY_HEIGHT - 2 * FONT_H * 2) / 2;
-  draw_text_vertical_ccw(left_eye_buffer, "OK", 2, 120, y2, 2);
-  draw_text_vertical_ccw(right_eye_buffer, "OK", 2, 120, y2, 2);
+    draw_text_vertical_ccw(left_eye_buffer, "I2C", 3, 75, y, 2, band_top);
+    draw_text_vertical_ccw(right_eye_buffer, "I2C", 3, 75, y, 2, band_top);
 
-  uint32_t npix = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-  for (uint32_t i = 0; i < npix / 2; i++) {
-    uint16_t t = left_eye_buffer[i];
-    left_eye_buffer[i] = left_eye_buffer[npix - 1 - i];
-    left_eye_buffer[npix - 1 - i] = t;
-    uint16_t r = right_eye_buffer[i];
-    right_eye_buffer[i] = right_eye_buffer[npix - 1 - i];
-    right_eye_buffer[npix - 1 - i] = r;
+    draw_text_vertical_ccw(left_eye_buffer, "OK", 2, 120, y2, 2, band_top);
+    draw_text_vertical_ccw(right_eye_buffer, "OK", 2, 120, y2, 2, band_top);
+
+    orient_frame_buffer(left_eye_buffer);
+    orient_frame_buffer(right_eye_buffer);
+
+    send_frame_buffer(LEFT_EYE_CS, left_eye_buffer, band_top);
+    send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer, band_top);
   }
-
-  send_frame_buffer(LEFT_EYE_CS, left_eye_buffer);
-  send_frame_buffer(RIGHT_EYE_CS, right_eye_buffer);
 
   display_bus_unlock();
 }

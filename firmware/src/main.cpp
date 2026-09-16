@@ -15,10 +15,27 @@
 #include "wifi_manager.h"
 
 SPIClass *hspi = &SPI;
+#if defined(BOARD_ESP32DEV)
+/* Classic ESP32 DevKit V1 runs the SPI bus at 40 MHz (the fastest the
+ * hand-wired panels tolerate). The original S3 hardware keeps 80 MHz. */
+SPISettings spi_settings(40000000, MSBFIRST, SPI_MODE0);
+#else
 SPISettings spi_settings(80000000, MSBFIRST, SPI_MODE0);
+#endif
 
-uint16_t left_eye_buffer[DISPLAY_WIDTH * DISPLAY_HEIGHT];
-uint16_t right_eye_buffer[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+/* Framebuffers. The ILI9341 panels are 240x320; two full buffers would
+   each be 153KB and blow the S3's internal DRAM, so that build shares one
+   buffer and pushes each eye sequentially. On the classic ESP32 even one
+   full frame can't be allocated (disjoint heap regions, largest block
+   ~128KB), so the shared buffer is PANEL_BUFFER_ROWS tall and shortens to
+   full height everywhere else. The GC9A01 build (240x240) fits two
+   buffers in DRAM and keeps the original draw-both-push-both flow. */
+#if PANEL_SINGLE_BUFFER
+uint16_t *shared_eye_buffer;
+#else
+uint16_t left_eye_buffer[PANEL_WIDTH * PANEL_HEIGHT];
+uint16_t right_eye_buffer[PANEL_WIDTH * PANEL_HEIGHT];
+#endif
 
 SpriteFrame sprite_frames[MAX_SPRITE_FRAMES];
 uint8_t sprite_count = 0;
@@ -75,7 +92,24 @@ bool force_eye_repaint = false;
 
 void setup() {
   Serial.begin(115200);
-  delay(5000);
+  delay(SERIAL_BOOT_DELAY_MS);
+
+#if PANEL_SINGLE_BUFFER
+{
+  size_t fb_bytes = PANEL_WIDTH * PANEL_BUFFER_ROWS * 2;
+  shared_eye_buffer = (uint16_t *)heap_caps_malloc(fb_bytes, MALLOC_CAP_8BIT);
+  if (!shared_eye_buffer) {
+    Serial.printf("FATAL: framebuffer alloc failed: need=%u free=%u max_alloc=%u caps=0x%x\n",
+                  (unsigned)fb_bytes, (unsigned)ESP.getFreeHeap(),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+                  heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    while (1) { delay(100); }
+  }
+  Serial.printf("framebuffer: %u bytes (%d band%s of %ux%u) @ %p\n",
+                (unsigned)fb_bytes, PANEL_BAND_COUNT, PANEL_BAND_COUNT > 1 ? "s" : "",
+                PANEL_WIDTH, PANEL_BUFFER_ROWS, (void *)shared_eye_buffer);
+}
+#endif
 
   pinMode(LEFT_EYE_CS, OUTPUT);
   pinMode(RIGHT_EYE_CS, OUTPUT);
@@ -87,7 +121,7 @@ void setup() {
 
   display_bus_init();
 
-  hspi->begin(SHARED_SCL, 1, SHARED_SDA, -1);
+  hspi->begin(SHARED_SCL, SHARED_MISO, SHARED_SDA, -1);
 
   digitalWrite(SHARED_DC, LOW);
   digitalWrite(LEFT_EYE_CS, HIGH);
@@ -100,13 +134,7 @@ void setup() {
   digitalWrite(SHARED_RST, HIGH);
   delay(150);
 
-  select_display(LEFT_EYE_CS);
-  init_gc9a01();
-  deselect_all();
-
-  select_display(RIGHT_EYE_CS);
-  init_gc9a01();
-  deselect_all();
+  panel_init_both();
 
   load_sprite_data();
   randomSeed(analogRead(0));
