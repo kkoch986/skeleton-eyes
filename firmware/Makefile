@@ -5,7 +5,10 @@
 PROJECT_NAME = skeleton-eyes
 PLATFORM = espressif32
 BOARD = esp32-s3-devkitc-1
-ENVIRONMENT = esp32-s3-devkitc-1
+# Default env is the round GC9A01 build; override for the ILI9341 retrofit:
+#   make upload ENVIRONMENT=esp32-s3-devkitc-1-ili9341   (S3)
+#   make upload ENVIRONMENT=esp32-devkitc-v1-ili9341     (classic DevKit V1)
+ENVIRONMENT ?= esp32-s3-devkitc-1
 
 # PlatformIO executable (adjust path if needed)
 PIO = pio
